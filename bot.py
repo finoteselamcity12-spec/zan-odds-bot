@@ -103,7 +103,7 @@ PREVIOUS_DEFAULT_CODES = {
 BOOKING_CODE_RE = re.compile(r"^[A-Za-z0-9-]{5,32}$")
 ODDS_RE = re.compile(r"^\d{1,5}(?:\.\d{1,3})?$")
 CHANNEL_CODE_RE = re.compile(r"(?<![A-Z0-9])[A-Z0-9]{5,8}(?![A-Z0-9])")
-PROMO_MARKER = "\n\n📣 Follow Zan Odds:"
+PROMO_MARKER = "\n\n📣 Follow Zan Odds:\n\n📣 የዛን ኦድስን ይከታተሉ:"
 
 router = Router()
 
@@ -144,14 +144,14 @@ class UserRateLimitMiddleware(BaseMiddleware):
         if not allowed:
             if isinstance(event, CallbackQuery):
                 try:
-                    await event.answer("Please wait before trying again.\nእባክዎ እንደገና ከመሞከርዎ በፊት ትንሽ ይጠብቁ።")
+                    await event.answer("Please wait before trying again.\n\nእባክዎ እንደገና ከመሞከርዎ በፊት ትንሽ ይጠብቁ።")
                 except TelegramAPIError:
                     logger.debug("Could not acknowledge rate-limited callback")
             elif isinstance(event, Message):
                 response = (
-                    "Please wait before sending another message.\nእባክዎ ሌላ መልዕክት ከመላክዎ በፊት ትንሽ ይጠብቁ።"
+                    "Please wait before sending another message.\n\nእባክዎ ሌላ መልዕክት ከመላክዎ በፊት ትንሽ ይጠብቁ።"
                     if event.text
-                    else "⚠️ Only button navigation is supported!\n⚠️ እባክዎ የምናሌ ቁልፎቹን ብቻ ይጠቀሙ።"
+                    else "⚠️ Only button navigation is supported!\n\n⚠️ እባክዎ የምናሌ ቁልፎቹን ብቻ ይጠቀሙ።"
                 )
                 try:
                     await event.answer(response, reply_markup=main_menu())
@@ -176,11 +176,11 @@ class UpdateErrorBoundaryMiddleware(BaseMiddleware):
                 if isinstance(event, Message):
                     await event.answer(
                         "⚠️ Only button navigation is supported!\n"
-                        "⚠️ እባክዎ የምናሌ ቁልፎቹን ብቻ ይጠቀሙ።",
+                        "\n⚠️ እባክዎ የምናሌ ቁልፎቹን ብቻ ይጠቀሙ።",
                         reply_markup=main_menu(),
                     )
                 elif isinstance(event, CallbackQuery):
-                    await event.answer("⚠️ Please use the menu buttons.\nእባክዎ የምናሌ ቁልፎቹን ይጠቀሙ።", show_alert=True)
+                    await event.answer("⚠️ Please use the menu buttons.\n\nእባክዎ የምናሌ ቁልፎቹን ይጠቀሙ።", show_alert=True)
             except TelegramAPIError:
                 logger.exception("Could not send update-failure response")
             return None
@@ -289,9 +289,9 @@ async def start(message: Message) -> None:
     welcome_text = (
         "🎯 <b>Welcome to ZAN SPORT NEWS OFFICIAL BOT!</b>\n"
         f"👋 Welcome, {name}.\n\n"
-        "🎯 <b>እንኳን ወደ ዛን ስፖርት ዜና ኦፊሴላዊ ቦት በደህና መጡ!</b>\n"
-        f"👋 እንኳን ደህና መጡ፣ {name}።\n\n"
         "Select an option below to continue.\n"
+        "\n🎯 <b>እንኳን ወደ ዛን ስፖርት ዜና ኦፊሴላዊ ቦት በደህና መጡ!</b>\n"
+        f"👋 እንኳን ደህና መጡ፣ {name}።\n\n"
         "ለመቀጠል ከታች ካሉት አማራጮች አንዱን ይምረጡ።"
     )
     logo_sources = [source for source in (LOGO_FILE_ID_CACHE, BOT_LOGO_URL) if source]
@@ -358,7 +358,7 @@ async def show_booking_code(query: CallbackQuery) -> None:
     bookie = (query.data or "").partition(":")[2]
     data = await asyncio.to_thread(load_booking_code, bookie)
     if data is None:
-        await query.answer("Unknown bookmaker.\nያልታወቀ የውርርድ ድርጅት።", show_alert=True)
+        await query.answer("Unknown bookmaker.\n\nያልታወቀ የውርርድ ድርጅት።", show_alert=True)
         return
     code, odds = data
     if query.message:
@@ -487,26 +487,27 @@ async def show_vip_channel(message: Message) -> None:
     )
     await message.answer(
         "⭐ <b>ZAN PREMIUM VIP CLUB</b> ⭐\n"
-        "⭐ <b>ዛን ፕሪሚየም VIP ክለብ</b> ⭐\n"
         "━━━━━━━━━━━━━━━━━━━━\n\n"
         "💎 <b>VIP benefits</b>\n"
         "• 🎯 Premium daily tips and match analysis\n"
         "• 🚀 Exclusive selections and accumulator slips\n"
         "• 📈 Private channel access after payment approval\n"
-        "\n💎 <b>የVIP ጥቅሞች</b>\n"
-        "• 🎯 ፕሪሚየም ዕለታዊ ትንበያዎችና የጨዋታ ትንተና\n"
-        "• 🚀 ልዩ የጨዋታ ምርጫዎችና የአኩሙሌተር ትኬቶች\n"
-        "• 📈 ክፍያዎ ከጸደቀ በኋላ የግል ቻናል መዳረሻ\n\n"
         "🔒 <b>How to join</b>\n"
         "1️⃣ Contact @Zanspo1 for payment instructions.\n"
         "2️⃣ Complete payment and send the receipt or transaction ID to the admin.\n"
         "3️⃣ The private invite is sent only after @Zanspo1 verifies and approves your payment.\n"
-        "\n🔒 <b>እንዴት መቀላቀል እንደሚቻል</b>\n"
+        "💬 Use the button below to contact the admin. The private invite is not displayed here.\n\n"
+        "⭐ <b>ዛን ፕሪሚየም VIP ክለብ</b> ⭐\n"
+        "━━━━━━━━━━━━━━━━━━━━\n\n"
+        "💎 <b>የVIP ጥቅሞች</b>\n"
+        "• 🎯 ፕሪሚየም ዕለታዊ ትንበያዎችና የጨዋታ ትንተና\n"
+        "• 🚀 ልዩ የጨዋታ ምርጫዎችና የአኩሙሌተር ትኬቶች\n"
+        "• 📈 ክፍያ ከጸደቀ በኋላ የግል ቻናል መዳረሻ\n\n"
+        "🔒 <b>እንዴት መቀላቀል እንደሚቻል</b>\n"
         "1️⃣ ስለ ክፍያ መመሪያዎች @Zanspo1 ያናግሩ።\n"
         "2️⃣ ክፍያዎን ፈጽመው ደረሰኙን ወይም የግብይት መለያ ቁጥሩን ለአስተዳዳሪው ይላኩ።\n"
         "3️⃣ @Zanspo1 ክፍያዎን ካረጋገጠና ካጸደቀ በኋላ ብቻ የግል የመቀላቀያ ሊንኩ ይላክልዎታል።\n\n"
-        "💬 Use the button below to contact the admin. The private invite is not displayed here.\n"
-        "💬 አስተዳዳሪውን ለማነጋገር ከታች ያለውን ቁልፍ ይጠቀሙ። የግል ሊንኩ እዚህ አይታይም።\n"
+        "💬 አስተዳዳሪውን ለማነጋገር ከታች ያለውን ቁልፍ ይጠቀሙ። የግል ሊንኩ በዚህ መልዕክት አይታይም።\n"
         "━━━━━━━━━━━━━━━━━━━━",
         reply_markup=keyboard,
         link_preview_options=LinkPreviewOptions(is_disabled=True),
@@ -563,18 +564,18 @@ async def set_booking_code(message: Message) -> None:
     _, bookie, code, odds = parts
     if bookie not in DEFAULT_CODES:
         await message.reply(
-            "❌ Unknown bookmaker. Use 1XBet, SportyBet, Bet365, or Melbet.\n"
+            "❌ Unknown bookmaker. Use 1XBet, SportyBet, Bet365, or Melbet.\n\n"
             "❌ ያልታወቀ የውርርድ ድርጅት ነው። 1XBet፣ SportyBet፣ Bet365 ወይም Melbet ይጠቀሙ።"
         )
         return
     if not BOOKING_CODE_RE.fullmatch(code) or not ODDS_RE.fullmatch(odds):
         await message.reply(
-            "❌ Code must be 5–32 letters, numbers, or hyphens; odds must be positive.\n"
+            "❌ Code must be 5–32 letters, numbers, or hyphens; odds must be positive.\n\n"
             "❌ ኮዱ 5–32 ፊደሎች፣ ቁጥሮች ወይም ሰረዞች መሆን አለበት፤ ኦዱም ከዜሮ በላይ ይሁን።"
         )
         return
     if Decimal(odds) <= 0:
-        await message.reply("❌ Odds must be greater than zero.\n❌ ኦዱ ከዜሮ በላይ መሆን አለበት።")
+        await message.reply("❌ Odds must be greater than zero.\n\n❌ ኦዱ ከዜሮ በላይ መሆን አለበት።")
         return
     await asyncio.to_thread(save_booking_code, bookie, code, odds)
     await message.reply(
@@ -590,7 +591,7 @@ async def set_booking_code(message: Message) -> None:
 @router.message(F.text)
 async def fallback_text(message: Message) -> None:
     await message.answer(
-        "I didn’t recognize that message. Use a menu button or send /start to reopen the menu.\n"
+        "I didn’t recognize that message. Use a menu button or send /start to reopen the menu.\n\n"
         "ይህን መልዕክት አልተረዳሁትም። ከታች ያለውን ቁልፍ ይጠቀሙ ወይም ምናሌውን ለመክፈት /start ይላኩ።",
         reply_markup=main_menu(),
     )
@@ -599,7 +600,7 @@ async def fallback_text(message: Message) -> None:
 @router.message()
 async def fallback_unsupported_message(message: Message) -> None:
     await message.answer(
-        "⚠️ Only button navigation is supported!\n"
+        "⚠️ Only button navigation is supported!\n\n"
         "⚠️ እባክዎ የምናሌ ቁልፎቹን ብቻ ይጠቀሙ።",
         reply_markup=main_menu(),
     )
@@ -608,7 +609,7 @@ async def fallback_unsupported_message(message: Message) -> None:
 @router.callback_query()
 async def fallback_callback(query: CallbackQuery) -> None:
     await query.answer(
-        "This action is no longer available. Please use the menu.\n"
+        "This action is no longer available. Please use the menu.\n\n"
         "ይህ አማራጭ አይገኝም። እባክዎ ምናሌውን ይጠቀሙ።",
         show_alert=True,
     )
@@ -621,7 +622,9 @@ async def enhance_channel_post(message: Message, bot: Bot) -> None:
     if not original or PROMO_MARKER.strip() in original:
         return
     promo = (
-        f'{PROMO_MARKER}\n<a href="{PUBLIC_CHANNEL_URL}">Zan Sport News</a>'
+        f'{PROMO_MARKER}\n'
+        f'<a href="{PUBLIC_CHANNEL_URL}">Zan Sport News</a> · '
+        f'<a href="{PUBLIC_CHANNEL_URL}">ዛን ስፖርት ዜና</a>'
     )
     limit = 4000 if message.text is not None else 900
     body = original[:max(0, limit - len(promo))]
