@@ -623,7 +623,7 @@ async def enhance_channel_post(message: Message, bot: Bot) -> None:
         return
     promo = (
         f'{PROMO_MARKER}\n'
-        f'<a href="{PUBLIC_CHANNEL_URL}">Zan Sport News</a> · '
+        f'<a href="{PUBLIC_CHANNEL_URL}">Zan Sport News</a>\n\n'
         f'<a href="{PUBLIC_CHANNEL_URL}">ዛን ስፖርት ዜና</a>'
     )
     limit = 4000 if message.text is not None else 900
