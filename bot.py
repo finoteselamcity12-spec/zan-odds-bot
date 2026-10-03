@@ -20,7 +20,8 @@ from aiogram.client.default import DefaultBotProperties
 from aiogram.client.session.aiohttp import AiohttpSession
 from aiogram.enums import ParseMode
 from aiogram.exceptions import TelegramAPIError, TelegramConflictError
-from aiogram.filters import Command, CommandStart
+from aiogram.filters import BaseFilter, Command, CommandStart
+from aiogram.filters.command import CommandObject
 from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram.types import (
     CallbackQuery,
@@ -62,8 +63,6 @@ UPDATE_CONCURRENCY_LIMIT = 512
 HTTP_CONNECTION_LIMIT = 256
 RATE_LIMIT_SECONDS = 0.8
 RATE_LIMIT_MAX_USERS = 50_000
-REGISTERED_USER_IDS: set[int] = set()
-USER_REGISTRATION_LOCK = asyncio.Lock()
 
 DATABASE_PATH = Path(os.getenv("BOT_DATABASE", "bot_data.sqlite3"))
 CHANNEL_USERNAME = "@zansportnews"
@@ -79,6 +78,7 @@ REGISTER_LINK = "https://cropped.link/Zanf"
 ADS_CONTACT = "@zan_fvrr"
 COLLAB_CONTACT = "@sent2000s"
 AGENT_CONTACT = "@Zanspo1"
+DEFAULT_CONTACT_INFO = "@Zanspo1"
 CHANNELS = (
     {"username": "@zansportnews", "link": "https://t.me/zansportnews", "title": "Zan Sport News"},
 )
@@ -105,6 +105,7 @@ BOOKING_CODE_RE = re.compile(r"^[A-Za-z0-9-]{5,32}$")
 ODDS_RE = re.compile(r"^\d{1,5}(?:\.\d{1,3})?$")
 CHANNEL_CODE_RE = re.compile(r"(?<![A-Z0-9])[A-Z0-9]{5,8}(?![A-Z0-9])")
 VIP_INVITE_URL_RE = re.compile(r"(?:https?://)?(?:www\.)?t\.me/\+[A-Za-z0-9_-]+", re.IGNORECASE)
+TELEGRAM_USERNAME_RE = re.compile(r"^@?[A-Za-z0-9_]{5,32}$")
 MAX_ADMIN_TEXT_LENGTH = 2500
 PROMO_MARKER = "\n\n📣 Follow Zan Odds:\n\n📣 የዛን ኦድስን ይከታተሉ:"
 
@@ -125,14 +126,6 @@ class UserRateLimitMiddleware(BaseMiddleware):
         user = getattr(event, "from_user", None)
         if user is None:
             return await handler(event, data)
-
-        async with USER_REGISTRATION_LOCK:
-            if user.id not in REGISTERED_USER_IDS:
-                try:
-                    await asyncio.to_thread(register_user, user.id)
-                    REGISTERED_USER_IDS.add(user.id)
-                except Exception:
-                    logger.exception("Could not persist user %s for bot broadcasts", user.id)
 
         now = time.monotonic()
         async with self._lock:
@@ -173,6 +166,12 @@ class UserRateLimitMiddleware(BaseMiddleware):
 
 
 user_rate_limit = UserRateLimitMiddleware()
+
+
+class IsAdmin(BaseFilter):
+    def __call__(self, event: Message | CallbackQuery) -> bool:
+        user = event.from_user
+        return user is not None and user.id in ADMIN_IDS
 
 
 class UpdateErrorBoundaryMiddleware(BaseMiddleware):
@@ -269,6 +268,15 @@ def load_setting(setting_key: str) -> str | None:
     return row["setting_value"] if row else None
 
 
+def load_contact_info() -> tuple[str, str]:
+    contact_info = load_setting("contact_info") or DEFAULT_CONTACT_INFO
+    if not TELEGRAM_USERNAME_RE.fullmatch(contact_info):
+        logger.warning("Stored contact information is invalid; using the default Telegram contact")
+        contact_info = DEFAULT_CONTACT_INFO
+    contact_info = f"@{contact_info.lstrip('@')}"
+    return contact_info, f"https://t.me/{contact_info.lstrip('@')}"
+
+
 def save_setting(setting_key: str, setting_value: str) -> None:
     with open_database() as connection:
         connection.execute(
@@ -276,13 +284,6 @@ def save_setting(setting_key: str, setting_value: str) -> None:
                ON CONFLICT(setting_key) DO UPDATE SET setting_value = excluded.setting_value""",
             (setting_key, setting_value),
         )
-
-
-def is_admin_user(user: Any) -> bool:
-    if user is None:
-        return False
-    user_id = getattr(user, "id", None)
-    return isinstance(user_id, int) and not isinstance(user_id, bool) and user_id in ADMIN_IDS
 
 
 def load_booking_code(bookie: str) -> tuple[str, str] | None:
@@ -341,6 +342,7 @@ async def start(message: Message) -> None:
     global LOGO_FILE_ID_CACHE
     if not message.from_user:
         return
+    await asyncio.to_thread(register_user, message.from_user.id)
     name = escape(message.from_user.first_name or "there")
     welcome_text = (
         "🎯 <b>Welcome to ZAN SPORT NEWS OFFICIAL BOT!</b>\n"
@@ -498,37 +500,37 @@ async def show_predictions_and_ads(message: Message) -> None:
 
 @router.message(F.text == MENU_DEPOSIT_WITHDRAWAL)
 async def show_deposit_withdrawal_instructions(message: Message) -> None:
+    contact_info, contact_url = await asyncio.to_thread(load_contact_info)
+    safe_contact_info = escape(contact_info)
     keyboard = InlineKeyboardMarkup(
         inline_keyboard=[
-            [InlineKeyboardButton(text="📩 Contact @Zanspo1", url="https://t.me/Zanspo1")]
+            [InlineKeyboardButton(text=f"📩 Contact {contact_info}", url=contact_url)]
         ]
     )
     await message.answer(
         "💳 <b>DEPOSITS & WITHDRAWALS</b> 🏧\n"
         "━━━━━━━━━━━━━━━━━━━━\n\n"
         "📥 <b>Deposit</b>\n"
-        "1️⃣ Contact @Zanspo1 for current payment details.\n"
+        f"1️⃣ Contact {safe_contact_info} for current payment details.\n"
         "2️⃣ Complete your transfer using the instructions provided.\n"
-        "3️⃣ Send the transaction confirmation or receipt to @Zanspo1 for verification.\n\n"
+        f"3️⃣ Send the transaction confirmation or receipt to {safe_contact_info} for verification.\n\n"
         "📤 <b>Withdrawal</b>\n"
-        "1️⃣ Contact @Zanspo1 with your payout request.\n"
+        f"1️⃣ Contact {safe_contact_info} with your payout request.\n"
         "2️⃣ Provide your account identifier and preferred payment details.\n"
         "3️⃣ Follow the admin's instructions while your request is reviewed.\n"
-        "All deposit and withdrawal requests are handled directly by @Zanspo1. Processing depends on verification and payment method.\n"
-        "\n📩 Contact Admin / Support for assistance:\n"
-        "👉 Telegram: @Zanspo1\n\n"
+        f"All deposit and withdrawal requests are handled directly by {safe_contact_info}. Processing depends on verification and payment method.\n"
+        f"\n📩 Contact Admin / Support for assistance:\n👉 Telegram: {safe_contact_info}\n\n"
         "\n💳 <b>ተቀማጭ እና ወጪ ገንዘብ</b> 🏧\n"
         "📥 <b>ተቀማጭ ለማድረግ</b>\n"
-        "1️⃣ የአሁኑን የክፍያ ዝርዝር ለማግኘት @Zanspo1 ያናግሩ።\n"
+        f"1️⃣ የአሁኑን የክፍያ ዝርዝር ለማግኘት {safe_contact_info} ያናግሩ።\n"
         "2️⃣ በተሰጡት መመሪያዎች መሠረት ገንዘቡን ያስተላልፉ።\n"
-        "3️⃣ የግብይት ማረጋገጫውን ወይም ደረሰኙን ለማረጋገጥ ለ@Zanspo1 ይላኩ።\n\n"
+        f"3️⃣ የግብይት ማረጋገጫውን ወይም ደረሰኙን ለማረጋገጥ ለ{safe_contact_info} ይላኩ።\n\n"
         "📤 <b>ገንዘብ ለማውጣት</b>\n"
-        "1️⃣ የወጪ ገንዘብ ጥያቄዎን ለ@Zanspo1 ያቅርቡ።\n"
+        f"1️⃣ የወጪ ገንዘብ ጥያቄዎን ለ{safe_contact_info} ያቅርቡ።\n"
         "2️⃣ የመለያ መረጃዎንና የሚመርጡትን የክፍያ ዝርዝር ያቅርቡ።\n"
         "3️⃣ ጥያቄዎ እስኪገመገም ድረስ የአስተዳዳሪውን መመሪያ ይከተሉ።\n"
-        "ሁሉም የተቀማጭና የወጪ ገንዘብ ጥያቄዎች በቀጥታ በ@Zanspo1 ይከናወናሉ። የማስኬጃ ጊዜው በማረጋገጫና በክፍያ ዘዴ ይወሰናል።\n"
-        "\n📩 ለመረጃ ወይም ለእርዳታ አድሚኖችን ያግኙ፦\n"
-        "👉 ቴሌግራም፦ @Zanspo1\n"
+        f"ሁሉም የተቀማጭና የወጪ ገንዘብ ጥያቄዎች በቀጥታ በ{safe_contact_info} ይከናወናሉ። የማስኬጃ ጊዜው በማረጋገጫና በክፍያ ዘዴ ይወሰናል።\n"
+        f"\n📩 ለመረጃ ወይም ለእርዳታ አድሚኖችን ያግኙ፦\n👉 ቴሌግራም፦ {safe_contact_info}\n"
         "━━━━━━━━━━━━━━━━━━━━",
         reply_markup=keyboard,
     )
@@ -554,9 +556,11 @@ async def show_agent(message: Message) -> None:
 
 @router.message(F.text == MENU_VIP)
 async def show_vip_channel(message: Message) -> None:
+    contact_info, contact_url = await asyncio.to_thread(load_contact_info)
+    safe_contact_info = escape(contact_info)
     keyboard = InlineKeyboardMarkup(
         inline_keyboard=[
-            [InlineKeyboardButton(text="📩 Message Admin @Zanspo1", url="https://t.me/Zanspo1")]
+            [InlineKeyboardButton(text=f"📩 Message Admin {contact_info}", url=contact_url)]
         ]
     )
     custom_vip_info = await asyncio.to_thread(load_setting, "vip_info")
@@ -577,12 +581,11 @@ async def show_vip_channel(message: Message) -> None:
         "━━━━━━━━━━━━━━━━━━━━\n\n"
         f"{vip_info}\n\n"
         "🔒 <b>How to join</b>\n"
-        "1️⃣ Contact @Zanspo1 for payment instructions.\n"
+        f"1️⃣ Contact {safe_contact_info} for payment instructions.\n"
         "2️⃣ Complete payment and send the receipt or transaction ID to the admin.\n"
-        "3️⃣ The private invite is sent only after @Zanspo1 verifies and approves your payment.\n"
+        f"3️⃣ The private invite is sent only after {safe_contact_info} verifies and approves your payment.\n"
         "💬 Use the button below to contact the admin. The private invite is not displayed here.\n\n"
-        "📩 Contact Admin / Support for assistance:\n"
-        "👉 Telegram: @Zanspo1\n\n"
+        f"📩 Contact Admin / Support for assistance:\n👉 Telegram: {safe_contact_info}\n\n"
         "⭐ <b>ዛን ፕሪሚየም VIP ክለብ</b> ⭐\n"
         "━━━━━━━━━━━━━━━━━━━━\n\n"
         "💎 <b>የVIP ጥቅሞች</b>\n"
@@ -590,12 +593,11 @@ async def show_vip_channel(message: Message) -> None:
         "• 🚀 ልዩ የጨዋታ ምርጫዎችና የአኩሙሌተር ትኬቶች\n"
         "• 📈 ክፍያ ከጸደቀ በኋላ የግል ቻናል መዳረሻ\n\n"
         "🔒 <b>እንዴት መቀላቀል እንደሚቻል</b>\n"
-        "1️⃣ ስለ ክፍያ መመሪያዎች @Zanspo1 ያናግሩ።\n"
+        f"1️⃣ ስለ ክፍያ መመሪያዎች {safe_contact_info} ያናግሩ።\n"
         "2️⃣ ክፍያዎን ፈጽመው ደረሰኙን ወይም የግብይት መለያ ቁጥሩን ለአስተዳዳሪው ይላኩ።\n"
-        "3️⃣ @Zanspo1 ክፍያዎን ካረጋገጠና ካጸደቀ በኋላ ብቻ የግል የመቀላቀያ ሊንኩ ይላክልዎታል።\n\n"
+        f"3️⃣ {safe_contact_info} ክፍያዎን ካረጋገጠና ካጸደቀ በኋላ ብቻ የግል የመቀላቀያ ሊንኩ ይላክልዎታል።\n\n"
         "💬 አስተዳዳሪውን ለማነጋገር ከታች ያለውን ቁልፍ ይጠቀሙ። የግል ሊንኩ በዚህ መልዕክት አይታይም።\n"
-        "\n📩 ለመረጃ ወይም ለእርዳታ አድሚኖችን ያግኙ፦\n"
-        "👉 ቴሌግራም፦ @Zanspo1\n"
+        f"\n📩 ለመረጃ ወይም ለእርዳታ አድሚኖችን ያግኙ፦\n👉 ቴሌግራም፦ {safe_contact_info}\n"
         "━━━━━━━━━━━━━━━━━━━━",
         reply_markup=keyboard,
         link_preview_options=LinkPreviewOptions(is_disabled=True),
@@ -604,11 +606,12 @@ async def show_vip_channel(message: Message) -> None:
 
 @router.message(F.text == MENU_SUPPORT)
 async def show_support(message: Message) -> None:
+    contact_info, contact_url = await asyncio.to_thread(load_contact_info)
     keyboard = InlineKeyboardMarkup(
         inline_keyboard=[
             [InlineKeyboardButton(text="📢 Contact @zan_fvrr", url="https://t.me/zan_fvrr")],
             [InlineKeyboardButton(text="🤝 Contact @sent2000s", url="https://t.me/sent2000s")],
-            [InlineKeyboardButton(text="📩 General Support · @Zanspo1", url="https://t.me/Zanspo1")],
+            [InlineKeyboardButton(text=f"📩 General Support · {contact_info}", url=contact_url)],
         ]
     )
     await message.answer(
@@ -619,9 +622,8 @@ async def show_support(message: Message) -> None:
         f"• Ads: {ADS_CONTACT}\n"
         f"• Company collaborations: {COLLAB_CONTACT}\n\n"
         "🛠️ <b>Customer care and account support</b>\n"
-        f"• General support and VIP assistance: {AGENT_CONTACT}\n"
-        "\n📩 Contact Admin / Support for assistance:\n"
-        "👉 Telegram: @Zanspo1\n\n"
+        f"• General support and VIP assistance: {escape(contact_info)}\n"
+        f"\n📩 Contact Admin / Support for assistance:\n👉 Telegram: {escape(contact_info)}\n\n"
         "\n📢 <b>ማስታወቂያ · ትብብር · ድጋፍ</b> 📢\n"
         "━━━━━━━━━━━━━━━━━━━━\n\n"
         "💼 <b>ንግድና ማስታወቂያ</b>\n"
@@ -629,18 +631,15 @@ async def show_support(message: Message) -> None:
         f"• ማስታወቂያ: {ADS_CONTACT}\n"
         f"• የኩባንያ ትብብር: {COLLAB_CONTACT}\n\n"
         "🛠️ <b>የደንበኛና የመለያ ድጋፍ</b>\n"
-        f"• አጠቃላይ ድጋፍና VIP እገዛ: {AGENT_CONTACT}\n"
-        "\n📩 ለመረጃ ወይም ለእርዳታ አድሚኖችን ያግኙ፦\n"
-        "👉 ቴሌግራም፦ @Zanspo1\n"
+        f"• አጠቃላይ ድጋፍና VIP እገዛ: {escape(contact_info)}\n"
+        f"\n📩 ለመረጃ ወይም ለእርዳታ አድሚኖችን ያግኙ፦\n👉 ቴሌግራም፦ {escape(contact_info)}\n"
         "━━━━━━━━━━━━━━━━━━━━",
         reply_markup=keyboard,
     )
 
 
-@router.message(Command("set_promo"))
+@router.message(Command("set_promo"), IsAdmin())
 async def set_promo_message(message: Message) -> None:
-    if not is_admin_user(message.from_user):
-        return
     parts = (message.text or "").split(maxsplit=1)
     if len(parts) != 2 or not parts[1].strip():
         await message.reply(
@@ -662,10 +661,8 @@ async def set_promo_message(message: Message) -> None:
     )
 
 
-@router.message(Command("set_vip"))
+@router.message(Command("set_vip"), IsAdmin())
 async def set_vip_message(message: Message) -> None:
-    if not is_admin_user(message.from_user):
-        return
     parts = (message.text or "").split(maxsplit=1)
     if len(parts) != 2 or not parts[1].strip():
         await message.reply(
@@ -693,23 +690,53 @@ async def set_vip_message(message: Message) -> None:
     )
 
 
-@router.message(Command("broadcast"))
-async def broadcast_message(message: Message, bot: Bot) -> None:
-    if not is_admin_user(message.from_user):
-        return
+@router.message(Command("set_contact"), IsAdmin())
+async def set_contact_info(message: Message) -> None:
     parts = (message.text or "").split(maxsplit=1)
     if len(parts) != 2 or not parts[1].strip():
         await message.reply(
-            "Usage: <code>/broadcast Your message</code>\n\n"
-            "አጠቃቀም: <code>/broadcast መልዕክትዎ</code>"
+            "Usage: <code>/set_contact @TelegramUsername</code>\n\n"
+            "አጠቃቀም: <code>/set_contact @TelegramUsername</code>"
+        )
+        return
+    contact_info = parts[1].strip()
+    if not TELEGRAM_USERNAME_RE.fullmatch(contact_info):
+        await message.reply(
+            "Enter a valid Telegram username (5–32 letters, numbers, or underscores).\n\n"
+            "ትክክለኛ የቴሌግራም ስም ያስገቡ (5–32 ፊደሎች፣ ቁጥሮች ወይም underscore)።"
+        )
+        return
+    contact_info = f"@{contact_info.lstrip('@')}"
+    await asyncio.to_thread(save_setting, "contact_info", contact_info)
+    await message.reply(
+        "✅ Updated successfully! Contact information has been changed.\n\n"
+        "✅ የእውቂያ መረጃው ተዘምኗል።"
+    )
+
+
+@router.message(Command("broadcast"), IsAdmin())
+async def broadcast_message(message: Message, bot: Bot, command: CommandObject) -> None:
+    broadcast_text = (command.args or "").strip()
+    photo_message = message if message.photo else (
+        message.reply_to_message if message.reply_to_message and message.reply_to_message.photo else None
+    )
+    if not broadcast_text and photo_message is not None:
+        if photo_message is not message and photo_message.caption:
+            broadcast_text = photo_message.caption.strip()
+    if not broadcast_text and photo_message is None:
+        await message.reply(
+            "Usage: <code>/broadcast Your message</code>, or reply to a photo with "
+            "<code>/broadcast Your caption</code>.\n\n"
+            "አጠቃቀም: <code>/broadcast መልዕክትዎ</code> ወይም ፎቶን በ"
+            "<code>/broadcast መግለጫዎ</code> መልሰው ይላኩ።"
         )
         return
 
-    broadcast_text = parts[1].strip()
-    if len(broadcast_text) > 3500:
+    max_text_length = 1024 if photo_message is not None else 3500
+    if len(broadcast_text) > max_text_length:
         await message.reply(
-            "Broadcast text must be 3,500 characters or fewer.\n\n"
-            "የስርጭት መልዕክቱ ከ3,500 ቁምፊዎች መብለጥ የለበትም።"
+            f"Broadcast text must be {max_text_length:,} characters or fewer.\n\n"
+            f"የስርጭት መልዕክቱ ከ{max_text_length:,} ቁምፊዎች መብለጥ የለበትም።"
         )
         return
 
@@ -722,12 +749,20 @@ async def broadcast_message(message: Message, bot: Bot) -> None:
         return
 
     safe_text = escape(broadcast_text)
+    photo_file_id = photo_message.photo[-1].file_id if photo_message else None
     semaphore = asyncio.Semaphore(32)
 
     async def deliver(user_id: int) -> bool:
         async with semaphore:
             try:
-                await bot.send_message(chat_id=user_id, text=safe_text)
+                if photo_file_id:
+                    await bot.send_photo(
+                        chat_id=user_id,
+                        photo=photo_file_id,
+                        caption=safe_text or None,
+                    )
+                else:
+                    await bot.send_message(chat_id=user_id, text=safe_text)
                 return True
             except TelegramAPIError:
                 logger.info("Broadcast delivery failed for user %s", user_id)
@@ -747,10 +782,8 @@ async def broadcast_message(message: Message, bot: Bot) -> None:
     )
 
 
-@router.message(Command("setcode"))
+@router.message(Command("setcode"), IsAdmin())
 async def set_booking_code(message: Message) -> None:
-    if not is_admin_user(message.from_user):
-        return
     parts = (message.text or "").split(maxsplit=3)
     if len(parts) != 4:
         await message.reply(
