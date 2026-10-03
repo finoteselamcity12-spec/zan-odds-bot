@@ -43,8 +43,27 @@ logging.basicConfig(
 logger = logging.getLogger("zan_odds_bot")
 
 BOT_TOKEN = os.getenv("BOT_TOKEN", "").strip()
-ADMIN_ID_VALUE = os.getenv("ADMIN_ID", "").strip()
-ADMIN_ID = int(ADMIN_ID_VALUE) if re.fullmatch(r"[1-9][0-9]*", ADMIN_ID_VALUE) else 0
+SECONDARY_ADMIN_ID = 8827929191
+ADMIN_USERNAMES = ["@Zanspo1"]
+
+
+def parse_admin_ids(*values: str) -> list[int]:
+    admin_ids: list[int] = []
+    for value in values:
+        for match in re.findall(r"(?<!\d)[1-9]\d*(?!\d)", value):
+            admin_id = int(match)
+            if admin_id not in admin_ids:
+                admin_ids.append(admin_id)
+    if SECONDARY_ADMIN_ID not in admin_ids:
+        admin_ids.append(SECONDARY_ADMIN_ID)
+    return admin_ids
+
+
+ADMIN_IDS = parse_admin_ids(
+    os.getenv("ADMIN_IDS", ""),
+    os.getenv("OWNER_ADMIN_ID", ""),
+    os.getenv("ADMIN_ID", ""),
+)
 BOT_LOGO_FILE_ID = os.getenv("BOT_LOGO_FILE_ID", "").strip()
 BOT_LOGO_URL_VALUE = os.getenv("BOT_LOGO_URL", "").strip()
 _logo_url = urlparse(BOT_LOGO_URL_VALUE)
@@ -63,6 +82,8 @@ UPDATE_CONCURRENCY_LIMIT = 512
 HTTP_CONNECTION_LIMIT = 256
 RATE_LIMIT_SECONDS = 0.8
 RATE_LIMIT_MAX_USERS = 50_000
+REGISTERED_USER_IDS: set[int] = set()
+USER_REGISTRATION_LOCK = asyncio.Lock()
 
 DATABASE_PATH = Path(os.getenv("BOT_DATABASE", "bot_data.sqlite3"))
 CHANNEL_USERNAME = "@zansportnews"
@@ -103,6 +124,8 @@ PREVIOUS_DEFAULT_CODES = {
 BOOKING_CODE_RE = re.compile(r"^[A-Za-z0-9-]{5,32}$")
 ODDS_RE = re.compile(r"^\d{1,5}(?:\.\d{1,3})?$")
 CHANNEL_CODE_RE = re.compile(r"(?<![A-Z0-9])[A-Z0-9]{5,8}(?![A-Z0-9])")
+VIP_INVITE_URL_RE = re.compile(r"(?:https?://)?(?:www\.)?t\.me/\+[A-Za-z0-9_-]+", re.IGNORECASE)
+MAX_ADMIN_TEXT_LENGTH = 2500
 PROMO_MARKER = "\n\n📣 Follow Zan Odds:\n\n📣 የዛን ኦድስን ይከታተሉ:"
 
 router = Router()
@@ -122,6 +145,14 @@ class UserRateLimitMiddleware(BaseMiddleware):
         user = getattr(event, "from_user", None)
         if user is None:
             return await handler(event, data)
+
+        async with USER_REGISTRATION_LOCK:
+            if user.id not in REGISTERED_USER_IDS:
+                try:
+                    await asyncio.to_thread(register_user, user.id)
+                    REGISTERED_USER_IDS.add(user.id)
+                except Exception:
+                    logger.exception("Could not persist user %s for bot broadcasts", user.id)
 
         now = time.monotonic()
         async with self._lock:
@@ -215,6 +246,15 @@ def initialize_database() -> None:
                 odds TEXT NOT NULL
             )"""
         )
+        connection.execute(
+            "CREATE TABLE IF NOT EXISTS bot_users (user_id INTEGER PRIMARY KEY)"
+        )
+        connection.execute(
+            """CREATE TABLE IF NOT EXISTS bot_settings (
+                setting_key TEXT PRIMARY KEY,
+                setting_value TEXT NOT NULL
+            )"""
+        )
         connection.execute("DROP TABLE IF EXISTS daily_spins")
         connection.executemany(
             "INSERT OR IGNORE INTO booking_codes (bookie, code, odds) VALUES (?, ?, ?)",
@@ -227,6 +267,46 @@ def initialize_database() -> None:
                    WHERE bookie = ? AND code = ? AND odds = ?""",
                 (new_code, new_odds, bookie, old_code, old_odds),
             )
+
+
+def register_user(user_id: int) -> None:
+    with open_database() as connection:
+        connection.execute("INSERT OR IGNORE INTO bot_users (user_id) VALUES (?)", (user_id,))
+
+
+def load_user_ids() -> list[int]:
+    with open_database() as connection:
+        rows = connection.execute("SELECT user_id FROM bot_users ORDER BY user_id").fetchall()
+    return [row["user_id"] for row in rows]
+
+
+def load_setting(setting_key: str) -> str | None:
+    with open_database() as connection:
+        row = connection.execute(
+            "SELECT setting_value FROM bot_settings WHERE setting_key = ?",
+            (setting_key,),
+        ).fetchone()
+    return row["setting_value"] if row else None
+
+
+def save_setting(setting_key: str, setting_value: str) -> None:
+    with open_database() as connection:
+        connection.execute(
+            """INSERT INTO bot_settings (setting_key, setting_value) VALUES (?, ?)
+               ON CONFLICT(setting_key) DO UPDATE SET setting_value = excluded.setting_value""",
+            (setting_key, setting_value),
+        )
+
+
+def is_admin_user(user: Any) -> bool:
+    if user is None:
+        return False
+    user_id = getattr(user, "id", None)
+    if isinstance(user_id, int) and not isinstance(user_id, bool) and user_id in ADMIN_IDS:
+        return True
+    username = getattr(user, "username", None)
+    configured_usernames = {value.lstrip("@").casefold() for value in ADMIN_USERNAMES}
+    return isinstance(username, str) and username.casefold() in configured_usernames
 
 
 def load_booking_code(bookie: str) -> tuple[str, str] | None:
@@ -383,23 +463,37 @@ async def show_bonus_promo(message: Message) -> None:
             [InlineKeyboardButton(text="📲 Register & Claim Bonus", url=REGISTER_LINK)]
         ]
     )
+    custom_message = await asyncio.to_thread(load_setting, "promo_message")
+    if custom_message:
+        english_promo = escape(custom_message)
+        amharic_promo = (
+            "በይፋዊ ሊንክ ይመዝገቡ፣ የተጠቀሰውን የፕሮሞ ኮድ ያስገቡ፣ "
+            "ከዚያም የቦነሱን ውሎችና ብቁነት ያረጋግጡ።"
+        )
+    else:
+        english_promo = (
+            "🚀 <b>Eligible new customers may qualify for up to 60,000 ETB.</b>\n\n"
+            "📌 <b>How to claim</b>\n"
+            f"1️⃣ Register using our official link: <a href=\"{REGISTER_LINK}\">Zan registration</a>\n"
+            f"2️⃣ Enter promo code <code>{PROMO_CODE}</code> during registration.\n"
+            "3️⃣ Make your first deposit and check the offer terms to confirm eligibility.\n"
+            "🔥 Check current conditions before depositing. Bonus availability and crediting follow the operator's terms."
+        )
+        amharic_promo = (
+            f"🚀 <b>ብቁ የሆኑ አዳዲስ ደንበኞች እስከ 60,000 ETB ቦነስ ሊያገኙ ይችላሉ።</b>\n\n"
+            "📌 <b>ቦነሱን እንዴት ማግኘት ይችላሉ</b>\n"
+            f"1️⃣ በይፋዊ ሊንካችን ይመዝገቡ: <a href=\"{REGISTER_LINK}\">የዛን ምዝገባ</a>\n"
+            f"2️⃣ በምዝገባ ጊዜ የፕሮሞ ኮድ <code>{PROMO_CODE}</code> ያስገቡ።\n"
+            "3️⃣ የመጀመሪያ ተቀማጭዎን ያድርጉና ብቁነትዎን ለማረጋገጥ የቦነሱን ውሎች ይመልከቱ።\n"
+            "🔥 ከመቀመጡ በፊት ውሎቹን ያረጋግጡ። የቦነሱ አገኘትና አሰጣጥ በኦፕሬተሩ ውሎች መሠረት ነው። በኃላፊነት ይጫወቱ።"
+        )
     await message.answer(
         "🎁 <b>EXCLUSIVE 200% FIRST DEPOSIT BONUS</b> 🎁\n"
         "━━━━━━━━━━━━━━━━━━━━\n\n"
-        "🚀 <b>Eligible new customers may qualify for up to 60,000 ETB.</b>\n"
-        "📌 <b>How to claim</b>\n"
-        f"1️⃣ Register using our official link: <a href=\"{REGISTER_LINK}\">Zan registration</a>\n"
-        f"2️⃣ Enter promo code <code>{PROMO_CODE}</code> during registration.\n"
-        "3️⃣ Make your first deposit and check the offer terms to confirm eligibility.\n"
-        "🔥 Check current conditions before depositing. Bonus availability and crediting follow the operator's terms.\n\n"
+        f"{english_promo}\n\n"
         "🎁 <b>ልዩ የመጀመሪያ ተቀማጭ 200% ቦነስ</b> 🎁\n"
         "━━━━━━━━━━━━━━━━━━━━\n\n"
-        "🚀 <b>ብቁ የሆኑ አዳዲስ ደንበኞች እስከ 60,000 ETB ቦነስ ሊያገኙ ይችላሉ።</b>\n\n"
-        "📌 <b>ቦነሱን እንዴት ማግኘት ይችላሉ</b>\n"
-        f"1️⃣ በይፋዊ ሊንካችን ይመዝገቡ: <a href=\"{REGISTER_LINK}\">የዛን ምዝገባ</a>\n"
-        f"2️⃣ በምዝገባ ጊዜ የፕሮሞ ኮድ <code>{PROMO_CODE}</code> ያስገቡ።\n"
-        "3️⃣ የመጀመሪያ ተቀማጭዎን ያድርጉና ብቁነትዎን ለማረጋገጥ የቦነሱን ውሎች ይመልከቱ።\n"
-        "🔥 ከመቀመጡ በፊት ውሎቹን ያረጋግጡ። የቦነሱ አገኘትና አሰጣጥ በኦፕሬተሩ ውሎች መሠረት ነው። በኃላፊነት ይጫወቱ።\n"
+        f"{amharic_promo}\n"
         "━━━━━━━━━━━━━━━━━━━━",
         reply_markup=keyboard,
         link_preview_options=LinkPreviewOptions(is_disabled=True),
@@ -445,6 +539,8 @@ async def show_deposit_withdrawal_instructions(message: Message) -> None:
         "2️⃣ Provide your account identifier and preferred payment details.\n"
         "3️⃣ Follow the admin's instructions while your request is reviewed.\n"
         "All deposit and withdrawal requests are handled directly by @Zanspo1. Processing depends on verification and payment method.\n"
+        "\n📩 Contact Admin / Support for assistance:\n"
+        "👉 Telegram: @Zanspo1\n\n"
         "\n💳 <b>ተቀማጭ እና ወጪ ገንዘብ</b> 🏧\n"
         "📥 <b>ተቀማጭ ለማድረግ</b>\n"
         "1️⃣ የአሁኑን የክፍያ ዝርዝር ለማግኘት @Zanspo1 ያናግሩ።\n"
@@ -455,6 +551,8 @@ async def show_deposit_withdrawal_instructions(message: Message) -> None:
         "2️⃣ የመለያ መረጃዎንና የሚመርጡትን የክፍያ ዝርዝር ያቅርቡ።\n"
         "3️⃣ ጥያቄዎ እስኪገመገም ድረስ የአስተዳዳሪውን መመሪያ ይከተሉ።\n"
         "ሁሉም የተቀማጭና የወጪ ገንዘብ ጥያቄዎች በቀጥታ በ@Zanspo1 ይከናወናሉ። የማስኬጃ ጊዜው በማረጋገጫና በክፍያ ዘዴ ይወሰናል።\n"
+        "\n📩 ለመረጃ ወይም ለእርዳታ አድሚኖችን ያግኙ፦\n"
+        "👉 ቴሌግራም፦ @Zanspo1\n"
         "━━━━━━━━━━━━━━━━━━━━",
         reply_markup=keyboard,
     )
@@ -485,18 +583,30 @@ async def show_vip_channel(message: Message) -> None:
             [InlineKeyboardButton(text="📩 Message Admin @Zanspo1", url="https://t.me/Zanspo1")]
         ]
     )
+    custom_vip_info = await asyncio.to_thread(load_setting, "vip_info")
+    if custom_vip_info and VIP_INVITE_URL_RE.search(custom_vip_info):
+        logger.warning("Stored VIP information contained a private invite URL; using safe defaults")
+        custom_vip_info = None
+    if custom_vip_info:
+        vip_info = escape(custom_vip_info)
+    else:
+        vip_info = (
+            "💎 <b>VIP benefits</b>\n"
+            "• 🎯 Premium daily tips and match analysis\n"
+            "• 🚀 Exclusive selections and accumulator slips\n"
+            "• 📈 Private channel access after payment approval"
+        )
     await message.answer(
         "⭐ <b>ZAN PREMIUM VIP CLUB</b> ⭐\n"
         "━━━━━━━━━━━━━━━━━━━━\n\n"
-        "💎 <b>VIP benefits</b>\n"
-        "• 🎯 Premium daily tips and match analysis\n"
-        "• 🚀 Exclusive selections and accumulator slips\n"
-        "• 📈 Private channel access after payment approval\n"
+        f"{vip_info}\n\n"
         "🔒 <b>How to join</b>\n"
         "1️⃣ Contact @Zanspo1 for payment instructions.\n"
         "2️⃣ Complete payment and send the receipt or transaction ID to the admin.\n"
         "3️⃣ The private invite is sent only after @Zanspo1 verifies and approves your payment.\n"
         "💬 Use the button below to contact the admin. The private invite is not displayed here.\n\n"
+        "📩 Contact Admin / Support for assistance:\n"
+        "👉 Telegram: @Zanspo1\n\n"
         "⭐ <b>ዛን ፕሪሚየም VIP ክለብ</b> ⭐\n"
         "━━━━━━━━━━━━━━━━━━━━\n\n"
         "💎 <b>የVIP ጥቅሞች</b>\n"
@@ -508,6 +618,8 @@ async def show_vip_channel(message: Message) -> None:
         "2️⃣ ክፍያዎን ፈጽመው ደረሰኙን ወይም የግብይት መለያ ቁጥሩን ለአስተዳዳሪው ይላኩ።\n"
         "3️⃣ @Zanspo1 ክፍያዎን ካረጋገጠና ካጸደቀ በኋላ ብቻ የግል የመቀላቀያ ሊንኩ ይላክልዎታል።\n\n"
         "💬 አስተዳዳሪውን ለማነጋገር ከታች ያለውን ቁልፍ ይጠቀሙ። የግል ሊንኩ በዚህ መልዕክት አይታይም።\n"
+        "\n📩 ለመረጃ ወይም ለእርዳታ አድሚኖችን ያግኙ፦\n"
+        "👉 ቴሌግራም፦ @Zanspo1\n"
         "━━━━━━━━━━━━━━━━━━━━",
         reply_markup=keyboard,
         link_preview_options=LinkPreviewOptions(is_disabled=True),
@@ -532,6 +644,8 @@ async def show_support(message: Message) -> None:
         f"• Company collaborations: {COLLAB_CONTACT}\n\n"
         "🛠️ <b>Customer care and account support</b>\n"
         f"• General support and VIP assistance: {AGENT_CONTACT}\n"
+        "\n📩 Contact Admin / Support for assistance:\n"
+        "👉 Telegram: @Zanspo1\n\n"
         "\n📢 <b>ማስታወቂያ · ትብብር · ድጋፍ</b> 📢\n"
         "━━━━━━━━━━━━━━━━━━━━\n\n"
         "💼 <b>ንግድና ማስታወቂያ</b>\n"
@@ -540,19 +654,126 @@ async def show_support(message: Message) -> None:
         f"• የኩባንያ ትብብር: {COLLAB_CONTACT}\n\n"
         "🛠️ <b>የደንበኛና የመለያ ድጋፍ</b>\n"
         f"• አጠቃላይ ድጋፍና VIP እገዛ: {AGENT_CONTACT}\n"
+        "\n📩 ለመረጃ ወይም ለእርዳታ አድሚኖችን ያግኙ፦\n"
+        "👉 ቴሌግራም፦ @Zanspo1\n"
         "━━━━━━━━━━━━━━━━━━━━",
         reply_markup=keyboard,
     )
 
 
+@router.message(Command("set_promo"))
+async def set_promo_message(message: Message) -> None:
+    if not is_admin_user(message.from_user):
+        return
+    parts = (message.text or "").split(maxsplit=1)
+    if len(parts) != 2 or not parts[1].strip():
+        await message.reply(
+            "Usage: <code>/set_promo Your promo announcement</code>\n\n"
+            "አጠቃቀም: <code>/set_promo የፕሮሞ ማስታወቂያዎ</code>"
+        )
+        return
+    custom_text = parts[1].strip()
+    if len(custom_text) > MAX_ADMIN_TEXT_LENGTH:
+        await message.reply(
+            f"Promo text must be {MAX_ADMIN_TEXT_LENGTH} characters or fewer.\n\n"
+            f"የፕሮሞ ጽሑፉ ከ{MAX_ADMIN_TEXT_LENGTH} ቁምፊዎች መብለጥ የለበትም።"
+        )
+        return
+    await asyncio.to_thread(save_setting, "promo_message", custom_text)
+    await message.reply(
+        "✅ Promo message updated. It will appear on the Bonus button.\n\n"
+        "✅ የፕሮሞ መልዕክቱ ተዘምኗል። በቦነስ ቁልፉ ላይ ይታያል።"
+    )
+
+
+@router.message(Command("set_vip"))
+async def set_vip_message(message: Message) -> None:
+    if not is_admin_user(message.from_user):
+        return
+    parts = (message.text or "").split(maxsplit=1)
+    if len(parts) != 2 or not parts[1].strip():
+        await message.reply(
+            "Usage: <code>/set_vip Your VIP information</code>\n\n"
+            "አጠቃቀም: <code>/set_vip የVIP መረጃዎ</code>"
+        )
+        return
+    custom_text = parts[1].strip()
+    if len(custom_text) > MAX_ADMIN_TEXT_LENGTH:
+        await message.reply(
+            f"VIP text must be {MAX_ADMIN_TEXT_LENGTH} characters or fewer.\n\n"
+            f"የVIP ጽሑፉ ከ{MAX_ADMIN_TEXT_LENGTH} ቁምፊዎች መብለጥ የለበትም።"
+        )
+        return
+    if VIP_INVITE_URL_RE.search(custom_text):
+        await message.reply(
+            "Do not include private Telegram invite links. Approved users receive the invite directly from an admin.\n\n"
+            "የግል የTelegram መቀላቀያ ሊንክ አያካትቱ። የጸደቁ ተጠቃሚዎች ሊንኩን በቀጥታ ከአስተዳዳሪ ያገኛሉ።"
+        )
+        return
+    await asyncio.to_thread(save_setting, "vip_info", custom_text)
+    await message.reply(
+        "✅ VIP information updated. Payment approval instructions remain in place.\n\n"
+        "✅ የVIP መረጃው ተዘምኗል። የክፍያ ማጽደቂያ መመሪያዎቹ እንደተጠበቁ ይቆያሉ።"
+    )
+
+
+@router.message(Command("broadcast"))
+async def broadcast_message(message: Message, bot: Bot) -> None:
+    if not is_admin_user(message.from_user):
+        return
+    parts = (message.text or "").split(maxsplit=1)
+    if len(parts) != 2 or not parts[1].strip():
+        await message.reply(
+            "Usage: <code>/broadcast Your message</code>\n\n"
+            "አጠቃቀም: <code>/broadcast መልዕክትዎ</code>"
+        )
+        return
+
+    broadcast_text = parts[1].strip()
+    if len(broadcast_text) > 3500:
+        await message.reply(
+            "Broadcast text must be 3,500 characters or fewer.\n\n"
+            "የስርጭት መልዕክቱ ከ3,500 ቁምፊዎች መብለጥ የለበትም።"
+        )
+        return
+
+    recipients = sorted(set(await asyncio.to_thread(load_user_ids)) | set(ADMIN_IDS))
+    if not recipients:
+        await message.reply(
+            "There are no registered bot users to receive this broadcast.\n\n"
+            "ይህን ስርጭት የሚቀበሉ የተመዘገቡ የቦት ተጠቃሚዎች የሉም።"
+        )
+        return
+
+    safe_text = escape(broadcast_text)
+    semaphore = asyncio.Semaphore(32)
+
+    async def deliver(user_id: int) -> bool:
+        async with semaphore:
+            try:
+                await bot.send_message(chat_id=user_id, text=safe_text)
+                return True
+            except TelegramAPIError:
+                logger.info("Broadcast delivery failed for user %s", user_id)
+                return False
+
+    delivered = 0
+    failed = 0
+    for start_index in range(0, len(recipients), 200):
+        batch = recipients[start_index:start_index + 200]
+        results = await asyncio.gather(*(deliver(user_id) for user_id in batch))
+        delivered += sum(results)
+        failed += len(results) - sum(results)
+
+    await message.reply(
+        f"📣 Broadcast complete. Delivered: {delivered}. Failed: {failed}.\n\n"
+        f"📣 ስርጭቱ ተጠናቋል። የደረሰላቸው: {delivered}። ያልደረሳቸው: {failed}።"
+    )
+
+
 @router.message(Command("setcode"))
 async def set_booking_code(message: Message) -> None:
-    if (
-        not message.from_user
-        or not isinstance(message.from_user.id, int)
-        or isinstance(message.from_user.id, bool)
-        or message.from_user.id != ADMIN_ID
-    ):
+    if not is_admin_user(message.from_user):
         return
     parts = (message.text or "").split(maxsplit=3)
     if len(parts) != 4:
@@ -695,11 +916,10 @@ async def run_health_server(started: asyncio.Future[None]) -> None:
 async def main() -> None:
     if not BOT_TOKEN:
         raise RuntimeError("Set BOT_TOKEN in .env before starting the bot.")
-    if not ADMIN_ID:
-        raise RuntimeError("Set a numeric ADMIN_ID in .env before starting the bot.")
-
-    if ADMIN_ID <= 0:
-        raise RuntimeError("Set ADMIN_ID to a positive integer in .env before starting the bot.")
+    if not ADMIN_IDS:
+        raise RuntimeError(
+            "Set ADMIN_IDS to include the owner Telegram ID; 8827929191 is configured as the secondary admin."
+        )
 
     session = AiohttpSession(timeout=HTTP_TIMEOUT_SECONDS, limit=HTTP_CONNECTION_LIMIT)
     bot = Bot(
