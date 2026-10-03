@@ -73,7 +73,7 @@ try:
 except ValueError:
     logger.warning("CHANNEL_CODE_MESSAGE_ID must be a positive integer; using channel-link fallback")
     CHANNEL_CODE_MESSAGE_ID = None
-PROMO_CODE = "ZANF"
+PROMO_CODE = "ZANODDS"
 REGISTER_LINK = "https://cropped.link/Zanf"
 ADS_CONTACT = "@zan_fvrr"
 COLLAB_CONTACT = "@sent2000s"
@@ -283,11 +283,10 @@ async def start(message: Message) -> None:
         return
     name = escape(message.from_user.first_name or "there")
     welcome_text = (
-        "🏆 <b>ZAN ODDS · OFFICIAL BOT</b> 🏆\n"
-        "━━━━━━━━━━━━━━━━━━━━\n"
-        f"👋 <b>Welcome, {name}!</b>\n\n"
-        "⚽ Free match tips · ⭐ Premium access · 💳 Account services\n\n"
-        "👇 <b>Choose an option below</b>"
+        "🎯 <b>Welcome to ZAN SPORT NEWS OFFICIAL BOT!</b>\n"
+        "🎯 <b>እንኳን ወደ ዛን ስፖርት ዜና ኦፊሴላዊ ቦት በደህና መጡ!</b>\n\n"
+        f"👋 {name}\n\n"
+        "Select an option below to continue / ለመቀጠል ከታች ካሉት አማራጮች አንዱን ይምረጡ፦"
     )
     logo_sources = [source for source in (LOGO_FILE_ID_CACHE, BOT_LOGO_URL) if source]
     for photo in dict.fromkeys(logo_sources):
@@ -372,14 +371,20 @@ async def show_bonus_promo(message: Message) -> None:
     )
     await message.answer(
         "🎁 <b>EXCLUSIVE 200% FIRST DEPOSIT BONUS</b> 🎁\n"
+        "🎁 <b>ልዩ የመጀመሪያ ተቀማጭ 200% ቦነስ</b> 🎁\n"
         "━━━━━━━━━━━━━━━━━━━━\n\n"
-        "🚀 <b>Eligible new customers may qualify for a bonus of up to 60,000 ETB.</b>\n\n"
-        "📌 <b>How to claim</b>\n"
+        "🚀 <b>Eligible new customers may qualify for up to 60,000 ETB.</b>\n"
+        "🚀 <b>ብቁ የሆኑ አዳዲስ ደንበኞች እስከ 60,000 ETB ቦነስ ሊያገኙ ይችላሉ።</b>\n\n"
+        "📌 <b>How to claim / እንዴት እንደሚወስዱ</b>\n"
         f"1️⃣ Register using our official link: <a href=\"{REGISTER_LINK}\">Zan registration</a>\n"
+        f"1️⃣ በይፋዊ ሊንካችን ይመዝገቡ: <a href=\"{REGISTER_LINK}\">ይመዝገቡ</a>\n"
         f"2️⃣ Enter promo code <code>{PROMO_CODE}</code> during registration.\n"
-        "3️⃣ Make your first deposit and review the operator's bonus terms to confirm eligibility.\n\n"
+        f"2️⃣ በምዝገባ ጊዜ የፕሮሞ ኮድ <code>{PROMO_CODE}</code> ያስገቡ።\n"
+        "3️⃣ Make your first deposit and check the offer terms to confirm eligibility.\n"
+        "3️⃣ የመጀመሪያ ተቀማጭዎን ያድርጉና የቦነሱን ውሎች ያረጋግጡ።\n\n"
         "🔥 Check the current offer conditions before depositing. Bonus availability, amount, and crediting "
         "are subject to the operator's terms. Please gamble responsibly.\n"
+        "🔥 ከመቀበልዎ በፊት የአሁኑን የቦነስ ውሎች ያንብቡ። ቦነሱ በኦፕሬተሩ ውሎች መሠረት ነው።\n"
         "━━━━━━━━━━━━━━━━━━━━",
         reply_markup=keyboard,
         link_preview_options=LinkPreviewOptions(is_disabled=True),
@@ -390,11 +395,13 @@ async def show_bonus_promo(message: Message) -> None:
 async def show_predictions_and_ads(message: Message) -> None:
     await message.answer(
         "⚽ <b>ZAN SPORT NEWS · DAILY FREE TIPS</b> ⚽\n"
+        "⚽ <b>ዛን ስፖርት ዜና · ዕለታዊ ነፃ ትንበያዎች</b> ⚽\n"
         "━━━━━━━━━━━━━━━━━━━━\n\n"
-        "🔥 <b>Today's featured channels</b>\n"
+        "🔥 <b>Today's free prediction channels / የዛሬ ነፃ ትንበያ ቻናሎች</b>\n"
         "• 🎯 <a href=\"https://t.me/mrt_tips\">MRT Tips</a>\n"
         f"• 📢 <a href=\"{PUBLIC_CHANNEL_URL}\">Zan Sport News</a>\n\n"
         "📌 Follow for daily match analysis and free predictions.\n"
+        "📌 ዕለታዊ የጨዋታ ትንተናና ነፃ ትንበያዎችን ለማግኘት ይከታተሉ።\n"
         "━━━━━━━━━━━━━━━━━━━━",
         link_preview_options=LinkPreviewOptions(is_disabled=True),
     )
@@ -409,16 +416,24 @@ async def show_deposit_withdrawal_instructions(message: Message) -> None:
     )
     await message.answer(
         "💳 <b>DEPOSITS & WITHDRAWALS</b> 🏧\n"
+        "💳 <b>ተቀማጭ እና ወጪ ገንዘብ</b> 🏧\n"
         "━━━━━━━━━━━━━━━━━━━━\n\n"
-        "📥 <b>To deposit</b>\n"
+        "📥 <b>To deposit / ተቀማጭ ለማድረግ</b>\n"
         "1️⃣ Contact @Zanspo1 for current payment details.\n"
+        "1️⃣ የአሁኑን የክፍያ ዝርዝር ለማግኘት @Zanspo1 ያናግሩ።\n"
         "2️⃣ Complete your transfer using the instructions provided.\n"
+        "2️⃣ በተሰጡት መመሪያዎች መሠረት ገንዘቡን ያስተላልፉ።\n"
         "3️⃣ Send the transaction confirmation or receipt to @Zanspo1 for verification.\n\n"
-        "📤 <b>To withdraw</b>\n"
+        "3️⃣ የግብይት ማረጋገጫውን ወይም ደረሰኙን ለማረጋገጥ ለ@Zanspo1 ይላኩ።\n\n"
+        "📤 <b>To withdraw / ገንዘብ ለማውጣት</b>\n"
         "1️⃣ Contact @Zanspo1 with your payout request.\n"
+        "1️⃣ የወጪ ገንዘብ ጥያቄዎን ለ@Zanspo1 ያቅርቡ።\n"
         "2️⃣ Provide your account identifier and preferred payment details.\n"
-        "3️⃣ Follow the admin's instructions while your request is reviewed.\n\n"
+        "2️⃣ የመለያ መረጃዎንና የሚመርጡትን የክፍያ ዝርዝር ያቅርቡ።\n"
+        "3️⃣ Follow the admin's instructions while your request is reviewed.\n"
+        "3️⃣ ጥያቄዎ እስኪገመገም ድረስ የአስተዳዳሪውን መመሪያ ይከተሉ።\n\n"
         "All deposit and withdrawal requests are handled directly by @Zanspo1. Processing depends on verification and payment method.\n"
+        "ሁሉም የተቀማጭና የወጪ ገንዘብ ጥያቄዎች በቀጥታ በ@Zanspo1 ይከናወናሉ።\n"
         "━━━━━━━━━━━━━━━━━━━━",
         reply_markup=keyboard,
     )
@@ -445,16 +460,24 @@ async def show_vip_channel(message: Message) -> None:
     )
     await message.answer(
         "⭐ <b>ZAN PREMIUM VIP CLUB</b> ⭐\n"
+        "⭐ <b>ዛን ፕሪሚየም VIP ክለብ</b> ⭐\n"
         "━━━━━━━━━━━━━━━━━━━━\n\n"
-        "💎 <b>VIP benefits</b>\n"
+        "💎 <b>VIP benefits / የVIP ጥቅሞች</b>\n"
         "• 🎯 Premium daily tips and match analysis\n"
+        "• 🎯 ፕሪሚየም ዕለታዊ ትንበያዎችና የጨዋታ ትንተና\n"
         "• 🚀 Exclusive selections and accumulator slips\n"
-        "• 📈 Private channel access after payment approval\n\n"
-        "🔒 <b>How to join</b>\n"
+        "• 🚀 ልዩ የጨዋታ ምርጫዎችና የአኩሙሌተር ትኬቶች\n"
+        "• 📈 Private channel access after payment approval\n"
+        "• 📈 ክፍያዎ ከጸደቀ በኋላ የግል ቻናል መዳረሻ\n\n"
+        "🔒 <b>How to join / እንዴት መቀላቀል እንደሚቻል</b>\n"
         "1️⃣ Contact @Zanspo1 for payment instructions.\n"
+        "1️⃣ ስለ ክፍያ መመሪያዎች @Zanspo1 ያናግሩ።\n"
         "2️⃣ Complete payment and send the receipt or transaction ID to the admin.\n"
-        "3️⃣ The private invite is sent only after @Zanspo1 verifies and approves your payment.\n\n"
+        "2️⃣ ክፍያዎን ፈጽመው ደረሰኙን ወይም የግብይት መለያ ቁጥሩን ለአስተዳዳሪው ይላኩ።\n"
+        "3️⃣ The private invite is sent only after @Zanspo1 verifies and approves your payment.\n"
+        "3️⃣ የግል የመቀላቀያ ሊንኩ የሚላክልዎ @Zanspo1 ክፍያዎን ካረጋገጠና ካጸደቀ በኋላ ብቻ ነው።\n\n"
         "💬 Use the button below to contact the admin. The private invite is not displayed here.\n"
+        "💬 አስተዳዳሪውን ለማነጋገር ከታች ያለውን ቁልፍ ይጠቀሙ። የግል ሊንኩ እዚህ አይታይም።\n"
         "━━━━━━━━━━━━━━━━━━━━",
         reply_markup=keyboard,
         link_preview_options=LinkPreviewOptions(is_disabled=True),
@@ -472,13 +495,18 @@ async def show_support(message: Message) -> None:
     )
     await message.answer(
         "📢 <b>ADVERTISING · PARTNERSHIPS · SUPPORT</b> 📢\n"
+        "📢 <b>ማስታወቂያ · ትብብር · ድጋፍ</b> 📢\n"
         "━━━━━━━━━━━━━━━━━━━━\n\n"
-        "💼 <b>Business and promotions</b>\n"
+        "💼 <b>Business and promotions / ንግድና ማስታወቂያ</b>\n"
         "Reach an active sports audience through advertising and collaborations.\n"
+        "በማስታወቂያና በትብብር ከስፖርት ተከታዮች ጋር ይድረሱ።\n"
         f"• Ads: {ADS_CONTACT}\n"
+        f"• ማስታወቂያ: {ADS_CONTACT}\n"
         f"• Company collaborations: {COLLAB_CONTACT}\n\n"
-        "🛠️ <b>Customer care and account support</b>\n"
+        f"• የኩባንያ ትብብር: {COLLAB_CONTACT}\n\n"
+        "🛠️ <b>Customer care and account support / የደንበኛና የመለያ ድጋፍ</b>\n"
         f"• General support and VIP assistance: {AGENT_CONTACT}\n"
+        f"• አጠቃላይ ድጋፍና VIP እገዛ: {AGENT_CONTACT}\n"
         "━━━━━━━━━━━━━━━━━━━━",
         reply_markup=keyboard,
     )
