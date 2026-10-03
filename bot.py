@@ -19,7 +19,7 @@ from aiogram import BaseMiddleware, Bot, Dispatcher, F, Router
 from aiogram.client.default import DefaultBotProperties
 from aiogram.client.session.aiohttp import AiohttpSession
 from aiogram.enums import ParseMode
-from aiogram.exceptions import TelegramAPIError
+from aiogram.exceptions import TelegramAPIError, TelegramConflictError
 from aiogram.filters import Command, CommandStart
 from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram.types import (
@@ -58,6 +58,8 @@ if BOT_LOGO_URL_VALUE and not BOT_LOGO_URL:
 LOGO_FILE_ID_CACHE = BOT_LOGO_FILE_ID
 HTTP_TIMEOUT_SECONDS = 20
 POLLING_TIMEOUT_SECONDS = 30
+UPDATE_CONCURRENCY_LIMIT = 512
+HTTP_CONNECTION_LIMIT = 256
 RATE_LIMIT_SECONDS = 0.8
 RATE_LIMIT_MAX_USERS = 50_000
 
@@ -144,13 +146,45 @@ class UserRateLimitMiddleware(BaseMiddleware):
                     await event.answer("Please wait a moment before trying again.")
                 except TelegramAPIError:
                     logger.debug("Could not acknowledge rate-limited callback")
-            elif isinstance(event, Message) and event.text:
-                await event.answer("Please wait a moment before sending another message.")
+            elif isinstance(event, Message):
+                response = (
+                    "Please wait a moment before sending another message."
+                    if event.text
+                    else "⚠️ Only button navigation is supported!"
+                )
+                try:
+                    await event.answer(response, reply_markup=main_menu())
+                except TelegramAPIError:
+                    logger.debug("Could not acknowledge rate-limited message")
             return None
         return await handler(event, data)
 
 
 user_rate_limit = UserRateLimitMiddleware()
+
+
+class UpdateErrorBoundaryMiddleware(BaseMiddleware):
+    """Contain handler failures and return a safe, concise response to the user."""
+
+    async def __call__(self, handler: Any, event: Any, data: dict[str, Any]) -> Any:
+        try:
+            return await handler(event, data)
+        except Exception:
+            logger.exception("Unhandled failure while processing update")
+            try:
+                if isinstance(event, Message):
+                    await event.answer("⚠️ Only button navigation is supported!", reply_markup=main_menu())
+                elif isinstance(event, CallbackQuery):
+                    await event.answer("⚠️ Please use the menu buttons.", show_alert=True)
+            except TelegramAPIError:
+                logger.exception("Could not send update-failure response")
+            return None
+
+
+update_error_boundary = UpdateErrorBoundaryMiddleware()
+router.message.outer_middleware(update_error_boundary)
+router.callback_query.outer_middleware(update_error_boundary)
+router.channel_post.outer_middleware(update_error_boundary)
 router.message.outer_middleware(user_rate_limit)
 router.callback_query.outer_middleware(user_rate_limit)
 
@@ -486,43 +520,17 @@ async def set_booking_code(message: Message) -> None:
     )
 
 
-@router.message(F.photo)
-async def forward_receipt(message: Message, bot: Bot) -> None:
-    if not message.from_user:
-        return
-    if not ADMIN_ID:
-        logger.error("ADMIN_ID is missing; cannot forward receipt from user %s", message.from_user.id)
-        await message.answer(
-            "📩 Receipt forwarding is unavailable right now. Contact support."
-        )
-        return
-    user = message.from_user
-    username = f"@{escape(user.username)}" if user.username else "not set"
-    caption = (
-        "📩 <b>NEW USER PHOTO / RECEIPT</b>\n\n"
-        f"👤 <b>Name:</b> {escape(user.full_name)}\n"
-        f"🔗 <b>Username:</b> {username}\n"
-        f"🆔 <b>User ID:</b> <code>{user.id}</code>"
-    )
-    try:
-        await bot.send_photo(chat_id=ADMIN_ID, photo=message.photo[-1].file_id, caption=caption)
-    except TelegramAPIError:
-        logger.exception("Could not forward photo from user %s", user.id)
-        await message.answer(
-            "❌ Could not send the screenshot. Try again later."
-        )
-        return
-    await message.answer(
-        "✅ Screenshot sent to the admin for review."
-    )
-
-
 @router.message(F.text)
 async def fallback_text(message: Message) -> None:
     await message.answer(
         "I didn’t recognize that message. Use one of the menu buttons below, or send /start to reopen the menu.",
         reply_markup=main_menu(),
     )
+
+
+@router.message()
+async def fallback_unsupported_message(message: Message) -> None:
+    await message.answer("⚠️ Only button navigation is supported!", reply_markup=main_menu())
 
 
 @router.callback_query()
@@ -614,7 +622,7 @@ async def main() -> None:
     if ADMIN_ID <= 0:
         raise RuntimeError("Set ADMIN_ID to a positive integer in .env before starting the bot.")
 
-    session = AiohttpSession(timeout=HTTP_TIMEOUT_SECONDS)
+    session = AiohttpSession(timeout=HTTP_TIMEOUT_SECONDS, limit=HTTP_CONNECTION_LIMIT)
     bot = Bot(
         token=BOT_TOKEN,
         session=session,
@@ -630,18 +638,31 @@ async def main() -> None:
     )
     try:
         await server_started
-        await dispatcher.start_polling(
-            bot,
-            allowed_updates=dispatcher.resolve_used_update_types(),
-            polling_timeout=POLLING_TIMEOUT_SECONDS,
-        )
+        await bot.delete_webhook(drop_pending_updates=False)
+        try:
+            await dispatcher.start_polling(
+                bot,
+                allowed_updates=dispatcher.resolve_used_update_types(),
+                polling_timeout=POLLING_TIMEOUT_SECONDS,
+                handle_as_tasks=True,
+                tasks_concurrency_limit=UPDATE_CONCURRENCY_LIMIT,
+            )
+        except TelegramConflictError:
+            logger.critical(
+                "Telegram polling conflict: another process is polling this bot token. "
+                "Run exactly one polling instance."
+            )
+            raise
     finally:
         server_task.cancel()
         try:
             await server_task
         except asyncio.CancelledError:
             pass
-        await bot.session.close()
+        except Exception:
+            logger.exception("Health server task stopped unexpectedly")
+        finally:
+            await bot.session.close()
 
 
 if __name__ == "__main__":
