@@ -8,7 +8,7 @@ import sqlite3
 import time
 from collections import OrderedDict
 from contextlib import contextmanager
-from decimal import Decimal, InvalidOperation
+from decimal import Decimal
 from html import escape
 from pathlib import Path
 from typing import Any, Iterator
@@ -21,8 +21,6 @@ from aiogram.client.session.aiohttp import AiohttpSession
 from aiogram.enums import ParseMode
 from aiogram.exceptions import TelegramAPIError
 from aiogram.filters import Command, CommandStart
-from aiogram.fsm.context import FSMContext
-from aiogram.fsm.state import State, StatesGroup
 from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram.types import (
     CallbackQuery,
@@ -79,12 +77,12 @@ CHANNELS = (
     {"username": "@zansportnews", "link": "https://t.me/zansportnews", "title": "Zan Sport News"},
     {"username": "@mrt_tips", "link": "https://t.me/mrt_tips", "title": "MRT Tips"},
 )
-MENU_CODES = "🎯 Today's Free Codes | የዛሬ ነፃ ኮዶች"
-MENU_PROMO = "💎 1XBet Promo | ፕሮሞ ኮድ"
-MENU_AGENT = "⚡ Deposit & Withdraw | ኤጀንት"
-MENU_PREDICTIONS = "⚽ Predictions | ማስታወቂያ"
-MENU_CALCULATOR = "🧮 Calculator | ካልኩሌተር"
-MENU_HELP = "📩 Help & Support | እርዳታ"
+MENU_CODES = "🎯 Today's Free Codes"
+MENU_PROMO = "💎 1XBet Promo"
+MENU_AGENT = "⚡ Deposit & Withdraw"
+MENU_PREDICTIONS = "⚽ Predictions & Ads"
+MENU_VIP = "⭐ Join VIP Channel"
+MENU_HELP = "📩 Help & Support"
 DEFAULT_CODES = {
     "1XBet": ("ZANF2026", "2.45"),
     "SportyBet": ("BC89210", "3.10"),
@@ -100,7 +98,7 @@ PREVIOUS_DEFAULT_CODES = {
 BOOKING_CODE_RE = re.compile(r"^[A-Za-z0-9-]{5,32}$")
 ODDS_RE = re.compile(r"^\d{1,5}(?:\.\d{1,3})?$")
 CHANNEL_CODE_RE = re.compile(r"(?<![A-Z0-9])[A-Z0-9]{5,8}(?![A-Z0-9])")
-PROMO_MARKER = "\n\n📣 Follow Zan Odds / የዛን ኦድስን ይከታተሉ:"
+PROMO_MARKER = "\n\n📣 Follow Zan Odds:"
 
 router = Router()
 
@@ -141,7 +139,7 @@ class UserRateLimitMiddleware(BaseMiddleware):
         if not allowed:
             if isinstance(event, CallbackQuery):
                 try:
-                    await event.answer("Please wait a moment before trying again. / እባክዎ ትንሽ ይጠብቁ።")
+                    await event.answer("Please wait a moment before trying again.")
                 except TelegramAPIError:
                     logger.debug("Could not acknowledge rate-limited callback")
             return None
@@ -151,10 +149,6 @@ class UserRateLimitMiddleware(BaseMiddleware):
 user_rate_limit = UserRateLimitMiddleware()
 router.message.outer_middleware(user_rate_limit)
 router.callback_query.outer_middleware(user_rate_limit)
-
-
-class CalculatorStates(StatesGroup):
-    waiting_for_values = State()
 
 
 @contextmanager
@@ -216,7 +210,7 @@ def main_menu() -> ReplyKeyboardMarkup:
         keyboard=[
             [KeyboardButton(text=MENU_CODES)],
             [KeyboardButton(text=MENU_PROMO), KeyboardButton(text=MENU_AGENT)],
-            [KeyboardButton(text=MENU_PREDICTIONS), KeyboardButton(text=MENU_CALCULATOR)],
+            [KeyboardButton(text=MENU_PREDICTIONS), KeyboardButton(text=MENU_VIP)],
             [KeyboardButton(text=MENU_HELP)],
         ],
         resize_keyboard=True,
@@ -252,10 +246,9 @@ async def start(message: Message) -> None:
     welcome_text = (
         "🔥 <b>WELCOME TO ZAN ODDS OFFICIAL BOT</b> 🔥\n"
         "━━━━━━━━━━━━━━━━━━━━━━━\n"
-        f"👋 <b>Welcome / እንኳን ደህና መጡ {name}!</b>\n\n"
+        f"👋 <b>Welcome, {name}!</b>\n\n"
         "🚀 Get live prediction links, 1XBet bonuses, and instant agent support.\n"
-        "የቀጥታ ትንበያዎችን፣ የ1XBet ቦነሶችን እና ፈጣን የኤጀንት እገዛ ያግኙ።\n\n"
-        "👇 <b>Select a service / አገልግሎት ይምረጡ</b>"
+        "👇 <b>Select a service below</b>"
     )
     logo_sources = [source for source in (LOGO_FILE_ID_CACHE, BOT_LOGO_URL) if source]
     for photo in dict.fromkeys(logo_sources):
@@ -279,7 +272,7 @@ async def start(message: Message) -> None:
 async def show_free_codes(message: Message, bot: Bot) -> None:
     keyboard = InlineKeyboardMarkup(
         inline_keyboard=[
-            [InlineKeyboardButton(text="🔥 View Latest Codes / የቅርብ ጊዜ ኮዶች 🚀", url="https://t.me/zansportnews")]
+            [InlineKeyboardButton(text="🔥 View Latest Codes 🚀", url="https://t.me/zansportnews")]
         ]
     )
     if CHANNEL_CODE_MESSAGE_ID:
@@ -290,8 +283,8 @@ async def show_free_codes(message: Message, bot: Bot) -> None:
                 message_id=CHANNEL_CODE_MESSAGE_ID,
             )
             await message.answer(
-                "📌 <b>Latest prediction copied / የቅርብ ጊዜ ትንበያ ተቀድቷል</b>\n"
-                "Open the live channel for newer codes. / አዳዲስ ኮዶችን በቀጥታ ቻናሉ ላይ ይመልከቱ።",
+                "📌 <b>Latest prediction copied.</b>\n"
+                "Open the live channel for newer codes.",
                 reply_markup=keyboard,
             )
             return
@@ -305,9 +298,8 @@ async def show_free_codes(message: Message, bot: Bot) -> None:
     await message.answer(
         "🎯 <b>TODAY'S OFFICIAL FREE CODES</b>\n"
         "━━━━━━━━━━━━━━━━━━━━━━━\n\n"
-        "Today's verified prediction codes are posted live in our official channel.\n"
-        "የዛሬ የተረጋገጡ የትንበያ ኮዶች በዋናው ቻናላችን ላይ በቀጥታ ይለቀቃሉ።\n\n"
-        "👇 <b>Open the latest post / የቅርብ ጊዜ መልዕክት ይመልከቱ</b>",
+        "Today's verified prediction codes are posted live in our official channel.\n\n"
+        "👇 <b>Open the latest post</b>",
         reply_markup=keyboard,
         link_preview_options=LinkPreviewOptions(is_disabled=True),
     )
@@ -318,7 +310,7 @@ async def show_booking_code(query: CallbackQuery) -> None:
     bookie = (query.data or "").partition(":")[2]
     data = await asyncio.to_thread(load_booking_code, bookie)
     if data is None:
-        await query.answer("Unknown bookmaker / ያልታወቀ የውርርድ ድርጅት።", show_alert=True)
+        await query.answer("Unknown bookmaker.", show_alert=True)
         return
     code, odds = data
     if query.message:
@@ -327,8 +319,7 @@ async def show_booking_code(query: CallbackQuery) -> None:
             "━━━━━━━━━━━━━━━━━━━━━━━\n\n"
             f"📊 <b>Total odds:</b> <code>{escape(odds)}</code>\n"
             f"📌 <b>Booking code:</b> <code>{escape(code)}</code>\n\n"
-            "Tap the code to copy, then paste it in your bookmaker app.\n"
-            "ኮዱን በመንካት ኮፒ ያድርጉና በመተግበሪያው ላይ ይለጥፉ። 🍀"
+            "Tap the code to copy, then paste it in your bookmaker app. 🍀"
         )
     await query.answer()
 
@@ -339,11 +330,10 @@ async def show_promo(message: Message) -> None:
         "💎 <b>𝟏𝐗𝐁𝐄𝐓 · 200% WELCOME BONUS</b> 💎\n"
         "━━━━━━━━━━━━━━━━━━━━━━━\n\n"
         "Register with our promo code for the welcome offer of up to <b>30,000 ETB</b>.\n"
-        "በፕሮሞ ኮዳችን ይመዝገቡና እስከ <b>30,000 ETB</b> የሚደርሰውን ቦነስ ይመልከቱ።\n\n"
+        "Check the current offer terms and eligibility before registering.\n\n"
         f"🏆 <b>PROMO CODE ➡️</b> <code>{PROMO_CODE}</code>\n\n"
         f"🔗 <a href=\"{REGISTER_LINK}\">REGISTER WITH 1XBET</a>\n\n"
-        "Tap the code to copy it. Eligibility and bonus terms are set by 1XBet.\n"
-        "ኮዱን በመንካት ኮፒ ያድርጉ። እባክዎ በኃላፊነት ይጫወቱ።",
+        "Tap the code to copy it. Eligibility and bonus terms are set by 1XBet. Please gamble responsibly.",
         link_preview_options=LinkPreviewOptions(is_disabled=True),
     )
 
@@ -353,7 +343,7 @@ async def show_predictions_and_ads(message: Message) -> None:
     await message.answer(
         "⚽ <b>𝑭𝑹𝑬𝑬 𝑷𝑹𝑬𝑫𝑰𝑪𝑻𝑰𝑶𝑵𝑺 & 𝑨𝑫𝑺</b> ⚽\n"
         "━━━━━━━━━━━━━━━━━━━━━━━\n\n"
-        "Daily predictions / ዕለታዊ ትንበያዎች:\n"
+        "Follow our channels for daily predictions:\n"
         "• <a href=\"https://t.me/zansportnews\">Zan Sport News</a>\n"
         "• <a href=\"https://t.me/mrt_tips\">MRT Tips</a>\n\n"
         f"📢 <b>FOR ADS 👉</b> {ADS_CONTACT}",
@@ -366,77 +356,40 @@ async def show_agent(message: Message) -> None:
     await message.answer(
         "⚡ <b>𝑭𝑨𝑺𝑻 𝑫𝑬𝑷𝑶𝑺𝑰𝑻 & 𝑾𝑰𝑻𝑯𝑫𝑹𝑨𝑾</b> ⚡\n"
         "━━━━━━━━━━━━━━━━━━━━━━━\n\n"
-        "Fast, reliable deposit and cashout support, available 24/7.\n"
-        "ፈጣንና አስተማማኝ የገንዘብ ገቢ/ማውጣት አገልግሎት፣ 24/7።\n\n"
-        f"👤 <b>Agent / ኤጀንት:</b> {AGENT_CONTACT}\n"
-        "⏰ <b>Service / አገልግሎት:</b> 24/7\n\n"
-        "Confirm fees before sending funds. / ገንዘብ ከመላክዎ በፊት ክፍያውን ያረጋግጡ።"
+        "Fast, reliable deposit and cashout support, available 24/7.\n\n"
+        f"👤 <b>Agent:</b> {AGENT_CONTACT}\n"
+        "⏰ <b>Service hours:</b> 24/7\n\n"
+        "Confirm fees before sending funds."
     )
 
 
-@router.message(F.text == MENU_CALCULATOR)
-async def start_calculator(message: Message, state: FSMContext) -> None:
-    await state.set_state(CalculatorStates.waiting_for_values)
-    await message.answer(
-        "🧮 <b>POTENTIAL WIN CALCULATOR</b>\n"
-        "━━━━━━━━━━━━━━━━━━━━━━\n\n"
-        "Send odds and stake separated by a space.\n"
-        "የቲኬቱን ኦድ እና የሚያስገቡትን ገንዘብ በክፍተት ይላኩ።\n\n"
-        "Example / ምሳሌ: <code>2.50 500</code>\n"
-        "Payout = odds × stake. Send /cancel to stop.\n"
-        "የሚገኘው ገንዘብ = ኦድ × ውርርድ። ለማቆም /cancel ይላኩ።"
+@router.message(F.text == MENU_VIP)
+async def show_vip_channel(message: Message) -> None:
+    keyboard = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="📩 Contact @Zanspo1 for Payment", url="https://t.me/Zanspo1")]
+        ]
     )
-
-
-@router.message(Command("cancel"), CalculatorStates.waiting_for_values)
-async def cancel_calculator(message: Message, state: FSMContext) -> None:
-    await state.clear()
     await message.answer(
-        "🧮 Calculator cancelled. / ስሌቱ ተቋርጧል።",
-        reply_markup=main_menu(),
-    )
-
-
-@router.message(CalculatorStates.waiting_for_values)
-async def calculate_payout(message: Message, state: FSMContext) -> None:
-    parts = (message.text or "").split()
-    if len(parts) != 2:
-        await message.answer(
-            "Enter odds and stake as two numbers, for example <code>2.50 500</code>.\n"
-            "ኦድና የውርርድ ገንዘብን እንደ ሁለት ቁጥሮች ያስገቡ።"
-        )
-        return
-    try:
-        odds, stake = (Decimal(value) for value in parts)
-        if not odds.is_finite() or not stake.is_finite() or odds <= 0 or stake <= 0:
-            raise InvalidOperation
-    except InvalidOperation:
-        await message.answer(
-            "Odds and stake must be positive numbers. Try again or send /cancel.\n"
-            "ኦድና ገንዘቡ ከዜሮ በላይ መሆን አለባቸው።"
-        )
-        return
-
-    payout = odds * stake
-    await state.clear()
-    await message.answer(
-        "🧮 <b>POTENTIAL PAYOUT / ሊያሸንፉ የሚችሉት</b>\n"
-        "━━━━━━━━━━━━━━━━━━━━━━\n\n"
-        f"{escape(format(odds, 'f'))} × {escape(format(stake, 'f'))} = "
-        f"<b>{escape(format(payout.normalize(), 'f'))}</b> ETB\n\n"
-        "Estimate before any applicable deductions. Betting involves risk.\n"
-        "ይህ ግምት ነው፤ ውርርድ አደጋ አለው።",
-        reply_markup=main_menu(),
+        "⭐ <b>VIP CHANNEL ACCESS</b> ⭐\n"
+        "━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+        "Get premium sports predictions and exclusive updates in our VIP channel.\n\n"
+        "Contact <a href=\"https://t.me/Zanspo1\">@Zanspo1</a> for the current payment instructions. "
+        "After paying, send your proof of payment or transaction ID directly to @Zanspo1 for review.\n\n"
+        "Once @Zanspo1 approves your payment, you will receive access to join "
+        "<a href=\"https://t.me/mrt_tips\">the VIP channel</a>.\n\n"
+        "Please wait for approval before expecting access. Contact the admin if you need help.",
+        reply_markup=keyboard,
+        link_preview_options=LinkPreviewOptions(is_disabled=True),
     )
 
 
 @router.message(F.text == MENU_HELP)
 async def show_help(message: Message) -> None:
     await message.answer(
-        "ℹ️ <b>HELP & SUPPORT / እገዛ</b>\n"
+        "ℹ️ <b>HELP & SUPPORT</b>\n"
         "━━━━━━━━━━━━━━━━━━━━━━\n\n"
-        f"For advertising and business questions, contact {ADS_CONTACT}.\n"
-        f"ለማስታወቂያና ለንግድ ጥያቄዎች {ADS_CONTACT} ያናግሩ።",
+        f"For advertising and business questions, contact {ADS_CONTACT}.",
         reply_markup=main_menu(),
     )
 
@@ -447,36 +400,34 @@ async def set_booking_code(message: Message) -> None:
         not message.from_user
         or not isinstance(message.from_user.id, int)
         or isinstance(message.from_user.id, bool)
-            or message.from_user.id != ADMIN_ID
+        or message.from_user.id != ADMIN_ID
     ):
         return
     parts = (message.text or "").split(maxsplit=3)
     if len(parts) != 4:
         await message.reply(
-            "⚙️ <b>Usage / አጠቃቀም</b>\n<code>/setcode 1XBet CODE123 2.15</code>"
+            "⚙️ <b>Usage</b>\n<code>/setcode 1XBet CODE123 2.15</code>"
         )
         return
     _, bookie, code, odds = parts
     if bookie not in DEFAULT_CODES:
         await message.reply(
-            "❌ Unknown bookmaker. / ያልታወቀ የውርርድ ድርጅት።\n"
-            "Use / ይጠቀሙ: 1XBet, SportyBet, Bet365, Melbet."
+            "❌ Unknown bookmaker. Use 1XBet, SportyBet, Bet365, or Melbet."
         )
         return
     if not BOOKING_CODE_RE.fullmatch(code) or not ODDS_RE.fullmatch(odds):
         await message.reply(
-            "❌ Code must be 5–32 letters, numbers, or hyphens; odds must be positive.\n"
-            "ኮዱ ከ5–32 ፊደል፣ ቁጥር ወይም ሰረዝ ይሁን፤ ኦድ ከዜሮ በላይ መሆን አለበት።"
+            "❌ Code must be 5–32 letters, numbers, or hyphens; odds must be positive."
         )
         return
     if Decimal(odds) <= 0:
-        await message.reply("❌ Odds must be greater than zero. / ኦድ ከዜሮ በላይ መሆን አለበት።")
+        await message.reply("❌ Odds must be greater than zero.")
         return
     await asyncio.to_thread(save_booking_code, bookie, code, odds)
     await message.reply(
-        f"✅ <b>Code updated / ኮዱ ተቀይሯል · {escape(bookie)}</b>\n"
-        f"📌 Code / ኮድ: <code>{escape(code)}</code>\n"
-        f"📊 Odds / ኦድ: <b>{escape(odds)}</b>"
+        f"✅ <b>Code updated · {escape(bookie)}</b>\n"
+        f"📌 Code: <code>{escape(code)}</code>\n"
+        f"📊 Odds: <b>{escape(odds)}</b>"
     )
 
 
@@ -487,30 +438,27 @@ async def forward_receipt(message: Message, bot: Bot) -> None:
     if not ADMIN_ID:
         logger.error("ADMIN_ID is missing; cannot forward receipt from user %s", message.from_user.id)
         await message.answer(
-            "📩 Receipt forwarding is unavailable right now. Contact support.\n"
-            "ደረሰኝ መላክ አልተቻለም። እባክዎ ድጋፍን ያናግሩ።"
+            "📩 Receipt forwarding is unavailable right now. Contact support."
         )
         return
     user = message.from_user
     username = f"@{escape(user.username)}" if user.username else "not set"
     caption = (
-        "📩 <b>NEW USER PHOTO / RECEIPT · አዲስ ፎቶ/ደረሰኝ</b>\n\n"
-        f"👤 <b>Name / ስም:</b> {escape(user.full_name)}\n"
-        f"🔗 <b>Username / የተጠቃሚ ስም:</b> {username}\n"
-        f"🆔 <b>User ID / መለያ:</b> <code>{user.id}</code>"
+        "📩 <b>NEW USER PHOTO / RECEIPT</b>\n\n"
+        f"👤 <b>Name:</b> {escape(user.full_name)}\n"
+        f"🔗 <b>Username:</b> {username}\n"
+        f"🆔 <b>User ID:</b> <code>{user.id}</code>"
     )
     try:
         await bot.send_photo(chat_id=ADMIN_ID, photo=message.photo[-1].file_id, caption=caption)
     except TelegramAPIError:
         logger.exception("Could not forward photo from user %s", user.id)
         await message.answer(
-            "❌ Could not send the screenshot. Try again later.\n"
-            "ስክሪንሾቱን መላክ አልተቻለም። እባክዎ ቆይተው ይሞክሩ።"
+            "❌ Could not send the screenshot. Try again later."
         )
         return
     await message.answer(
-        "✅ Screenshot sent to the admin for review.\n"
-        "ስክሪንሾቱ ለአድሚኑ ተልኳል።"
+        "✅ Screenshot sent to the admin for review."
     )
 
 
