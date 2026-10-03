@@ -13,12 +13,12 @@ from typing import Any, Iterator
 from urllib.parse import urlparse
 
 from aiohttp import web
-from aiogram import BaseMiddleware, Bot, Dispatcher, F, Router
+from aiogram import Bot, Dispatcher, F, Router
 from aiogram.client.default import DefaultBotProperties
 from aiogram.client.session.aiohttp import AiohttpSession
 from aiogram.enums import ParseMode
 from aiogram.exceptions import TelegramAPIError, TelegramConflictError
-from aiogram.filters import BaseFilter, Command
+from aiogram.filters import Command
 from aiogram.filters.command import CommandObject
 from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram.types import (
@@ -110,39 +110,6 @@ PROMO_MARKER = "\n\n📣 Follow Zan Odds:\n\n📣 የዛን ኦድስን ይከ�
 
 command_router = Router(name="commands")
 router = Router(name="user-messages")
-
-
-class IsAdmin(BaseFilter):
-    def __call__(self, message: Message) -> bool:
-        return message.from_user is not None and message.from_user.id in ADMIN_IDS
-
-
-class UpdateErrorBoundaryMiddleware(BaseMiddleware):
-    """Contain handler failures and return a safe, concise response to the user."""
-
-    async def __call__(self, handler: Any, event: Any, data: dict[str, Any]) -> Any:
-        try:
-            return await handler(event, data)
-        except Exception:
-            logger.exception("Unhandled failure while processing update")
-            try:
-                if isinstance(event, Message):
-                    await event.answer(
-                        "⚠️ Something went wrong while processing your request. Please try again.\n\n"
-                        "⚠️ ጥያቄዎን በማስኬድ ላይ ችግር ተፈጥሯል። እባክዎ እንደገና ይሞክሩ።"
-                    )
-                elif isinstance(event, CallbackQuery):
-                    await event.answer("⚠️ Please use the menu buttons.\n\nእባክዎ የምናሌ ቁልፎቹን ይጠቀሙ።", show_alert=True)
-            except TelegramAPIError:
-                logger.exception("Could not send update-failure response")
-            return None
-
-
-update_error_boundary = UpdateErrorBoundaryMiddleware()
-command_router.message.outer_middleware(update_error_boundary)
-router.message.outer_middleware(update_error_boundary)
-router.callback_query.outer_middleware(update_error_boundary)
-router.channel_post.outer_middleware(update_error_boundary)
 
 
 @contextmanager
@@ -407,6 +374,18 @@ async def show_bonus_promo(message: Message) -> None:
 
 @router.message(F.text == MENU_PREDICTIONS)
 async def show_predictions_and_ads(message: Message) -> None:
+    keyboard = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="🔥 View Latest Codes 🚀", url=PUBLIC_CHANNEL_URL)]
+        ]
+    )
+    if PROMO_MESSAGE:
+        await message.answer(
+            escape(PROMO_MESSAGE),
+            reply_markup=keyboard,
+            link_preview_options=LinkPreviewOptions(is_disabled=True),
+        )
+        return
     await message.answer(
         "⚽ <b>ZAN SPORT NEWS · DAILY FREE TIPS</b> ⚽\n"
         "━━━━━━━━━━━━━━━━━━━━\n\n"
@@ -434,6 +413,16 @@ async def show_deposit_withdrawal_instructions(message: Message) -> None:
             [InlineKeyboardButton(text=f"📩 Contact {contact_info}", url=contact_url)]
         ]
     )
+    if PROMO_MESSAGE:
+        await message.answer(
+            f"{escape(PROMO_MESSAGE)}\n\n"
+            "📩 Contact Admin / Support for assistance:\n"
+            f"👉 Telegram: {safe_contact_info}\n\n"
+            "📩 ለመረጃ ወይም ለእርዳታ አድሚኖችን ያግኙ፦\n"
+            f"👉 ቴሌግራም፦ {safe_contact_info}",
+            reply_markup=keyboard,
+        )
+        return
     await message.answer(
         "💳 <b>DEPOSITS & WITHDRAWALS</b> 🏧\n"
         "━━━━━━━━━━━━━━━━━━━━\n\n"
@@ -541,6 +530,16 @@ async def show_support(message: Message) -> None:
             [InlineKeyboardButton(text=f"📩 General Support · {contact_info}", url=contact_url)],
         ]
     )
+    if VIP_INFO:
+        await message.answer(
+            f"{escape(VIP_INFO)}\n\n"
+            "📩 Contact Admin / Support for assistance:\n"
+            f"👉 Telegram: {escape(contact_info)}\n\n"
+            "📩 ለመረጃ ወይም ለእርዳታ አድሚኖችን ያግኙ፦\n"
+            f"👉 ቴሌግራም፦ {escape(contact_info)}",
+            reply_markup=keyboard,
+        )
+        return
     await message.answer(
         "📢 <b>ADVERTISING · PARTNERSHIPS · SUPPORT</b> 📢\n"
         "━━━━━━━━━━━━━━━━━━━━\n\n"
@@ -565,8 +564,10 @@ async def show_support(message: Message) -> None:
     )
 
 
-@command_router.message(Command("set_promo"), IsAdmin())
+@command_router.message(Command("set_promo"))
 async def set_promo_message(message: Message) -> None:
+    if message.from_user is None or message.from_user.id not in ADMIN_IDS:
+        return
     global PROMO_MESSAGE
     parts = (message.text or "").split(maxsplit=1)
     if len(parts) != 2 or not parts[1].strip():
@@ -589,8 +590,10 @@ async def set_promo_message(message: Message) -> None:
     )
 
 
-@command_router.message(Command("set_vip"), IsAdmin())
+@command_router.message(Command("set_vip"))
 async def set_vip_message(message: Message) -> None:
+    if message.from_user is None or message.from_user.id not in ADMIN_IDS:
+        return
     global VIP_INFO
     parts = (message.text or "").split(maxsplit=1)
     if len(parts) != 2 or not parts[1].strip():
@@ -619,8 +622,10 @@ async def set_vip_message(message: Message) -> None:
     )
 
 
-@command_router.message(Command("set_contact"), IsAdmin())
+@command_router.message(Command("set_contact"))
 async def set_contact_info(message: Message) -> None:
+    if message.from_user is None or message.from_user.id not in ADMIN_IDS:
+        return
     parts = (message.text or "").split(maxsplit=1)
     if len(parts) != 2 or not parts[1].strip():
         await message.reply(
@@ -643,25 +648,29 @@ async def set_contact_info(message: Message) -> None:
     )
 
 
-@command_router.message(Command("broadcast"), IsAdmin())
+@command_router.message(Command("broadcast"))
 async def broadcast_message(message: Message, bot: Bot, command: CommandObject) -> None:
+    if message.from_user is None or message.from_user.id not in ADMIN_IDS:
+        return
     broadcast_text = (command.args or "").strip()
-    photo_message = message if message.photo else (
-        message.reply_to_message if message.reply_to_message and message.reply_to_message.photo else None
+    supported_media = ("photo", "audio", "document", "video", "animation")
+
+    def contains_media(candidate: Message | None) -> bool:
+        return candidate is not None and any(getattr(candidate, media_type, None) for media_type in supported_media)
+
+    media_message = message if contains_media(message) else (
+        message.reply_to_message if contains_media(message.reply_to_message) else None
     )
-    if not broadcast_text and photo_message is not None:
-        if photo_message is not message and photo_message.caption:
-            broadcast_text = photo_message.caption.strip()
-    if not broadcast_text and photo_message is None:
+    if not broadcast_text and media_message is None:
         await message.reply(
             "Usage: <code>/broadcast Your message</code>, or reply to a photo with "
-            "<code>/broadcast Your caption</code>.\n\n"
-            "አጠቃቀም: <code>/broadcast መልዕክትዎ</code> ወይም ፎቶን በ"
+            "<code>/broadcast Your caption</code>. Photos, audio, and documents are supported.\n\n"
+            "አጠቃቀም: <code>/broadcast መልዕክትዎ</code> ወይም ፎቶ፣ ድምፅ ወይም ሰነድን በ"
             "<code>/broadcast መግለጫዎ</code> መልሰው ይላኩ።"
         )
         return
 
-    max_text_length = 1024 if photo_message is not None else 3500
+    max_text_length = 1024 if media_message is not None else 4096
     if len(broadcast_text) > max_text_length:
         await message.reply(
             f"Broadcast text must be {max_text_length:,} characters or fewer.\n\n"
@@ -678,18 +687,23 @@ async def broadcast_message(message: Message, bot: Bot, command: CommandObject) 
         return
 
     safe_text = escape(broadcast_text)
-    photo_file_id = photo_message.photo[-1].file_id if photo_message else None
     semaphore = asyncio.Semaphore(32)
 
     async def deliver(user_id: int) -> bool:
         async with semaphore:
             try:
-                if photo_file_id:
-                    await bot.send_photo(
-                        chat_id=user_id,
-                        photo=photo_file_id,
-                        caption=safe_text or None,
-                    )
+                if media_message is not None:
+                    copy_options: dict[str, Any] = {
+                        "chat_id": user_id,
+                        "from_chat_id": media_message.chat.id,
+                        "message_id": media_message.message_id,
+                    }
+                    if broadcast_text or media_message is message:
+                        copy_options["caption"] = safe_text
+                        copy_options["parse_mode"] = ParseMode.HTML
+                    else:
+                        copy_options["parse_mode"] = None
+                    await bot.copy_message(**copy_options)
                 else:
                     await bot.send_message(chat_id=user_id, text=safe_text)
                 return True
@@ -711,8 +725,10 @@ async def broadcast_message(message: Message, bot: Bot, command: CommandObject) 
     )
 
 
-@command_router.message(Command("setcode"), IsAdmin())
+@command_router.message(Command("setcode"))
 async def set_booking_code(message: Message) -> None:
+    if message.from_user is None or message.from_user.id not in ADMIN_IDS:
+        return
     parts = (message.text or "").split(maxsplit=3)
     if len(parts) != 4:
         await message.reply(
@@ -819,6 +835,9 @@ async def handle_unexpected_error(event: ErrorEvent) -> bool:
         exc_info=(type(error), error, error.__traceback__),
     )
     return True
+
+
+command_router.errors.register(handle_unexpected_error)
 
 
 async def on_startup() -> None:
