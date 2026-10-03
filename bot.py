@@ -82,6 +82,8 @@ MENU_PROMO = "💎 1XBet Promo"
 MENU_AGENT = "⚡ Deposit & Withdraw"
 MENU_PREDICTIONS = "⚽ Free Predictions"
 MENU_VIP = "⭐ VIP Channel"
+MENU_DEPOSIT = "💳 Deposit"
+MENU_WITHDRAWAL = "🏧 Withdrawal"
 MENU_SUPPORT = "📢 For Ads / Support"
 DEFAULT_CODES = {
     "1XBet": ("ZANF2026", "2.45"),
@@ -210,8 +212,8 @@ def save_booking_code(bookie: str, code: str, odds: str) -> None:
 def main_menu() -> ReplyKeyboardMarkup:
     return ReplyKeyboardMarkup(
         keyboard=[
-            [KeyboardButton(text=MENU_PREDICTIONS)],
-            [KeyboardButton(text=MENU_VIP)],
+            [KeyboardButton(text=MENU_PREDICTIONS), KeyboardButton(text=MENU_VIP)],
+            [KeyboardButton(text=MENU_DEPOSIT), KeyboardButton(text=MENU_WITHDRAWAL)],
             [KeyboardButton(text=MENU_SUPPORT)],
         ],
         resize_keyboard=True,
@@ -349,6 +351,40 @@ async def show_predictions_and_ads(message: Message) -> None:
         f"• <a href=\"{PUBLIC_CHANNEL_URL}\">Zan Sport News</a>\n\n"
         f"📢 <b>FOR ADS 👉</b> {ADS_CONTACT}",
         link_preview_options=LinkPreviewOptions(is_disabled=True),
+    )
+
+
+@router.message(F.text == MENU_DEPOSIT)
+async def show_deposit_instructions(message: Message) -> None:
+    keyboard = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="📩 Contact @Zanspo1", url="https://t.me/Zanspo1")]
+        ]
+    )
+    await message.answer(
+        "💳 <b>DEPOSIT INSTRUCTIONS</b>\n"
+        "━━━━━━━━━━━━━━━━━━━━━━\n\n"
+        "Contact @Zanspo1 directly for the current deposit instructions. After completing your deposit, "
+        "send your proof of payment or transaction details to the admin for confirmation.\n\n"
+        "Use the contact button below to message the admin.",
+        reply_markup=keyboard,
+    )
+
+
+@router.message(F.text == MENU_WITHDRAWAL)
+async def show_withdrawal_instructions(message: Message) -> None:
+    keyboard = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="📩 Request Withdrawal from @Zanspo1", url="https://t.me/Zanspo1")]
+        ]
+    )
+    await message.answer(
+        "🏧 <b>WITHDRAWAL REQUEST</b>\n"
+        "━━━━━━━━━━━━━━━━━━━━━━\n\n"
+        "For withdrawal processing, message @Zanspo1 directly with your payout request and the required "
+        "transaction or account details. The admin will guide you through the next steps.\n\n"
+        "Use the contact button below to submit your request.",
+        reply_markup=keyboard,
     )
 
 
