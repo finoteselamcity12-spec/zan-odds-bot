@@ -43,27 +43,7 @@ logging.basicConfig(
 logger = logging.getLogger("zan_odds_bot")
 
 BOT_TOKEN = os.getenv("BOT_TOKEN", "").strip()
-SECONDARY_ADMIN_ID = 8827929191
-ADMIN_USERNAMES = ["@Zanspo1"]
-
-
-def parse_admin_ids(*values: str) -> list[int]:
-    admin_ids: list[int] = []
-    for value in values:
-        for match in re.findall(r"(?<!\d)[1-9]\d*(?!\d)", value):
-            admin_id = int(match)
-            if admin_id not in admin_ids:
-                admin_ids.append(admin_id)
-    if SECONDARY_ADMIN_ID not in admin_ids:
-        admin_ids.append(SECONDARY_ADMIN_ID)
-    return admin_ids
-
-
-ADMIN_IDS = parse_admin_ids(
-    os.getenv("ADMIN_IDS", ""),
-    os.getenv("OWNER_ADMIN_ID", ""),
-    os.getenv("ADMIN_ID", ""),
-)
+ADMIN_IDS = [5578838045, 8827929191]
 BOT_LOGO_FILE_ID = os.getenv("BOT_LOGO_FILE_ID", "").strip()
 BOT_LOGO_URL_VALUE = os.getenv("BOT_LOGO_URL", "").strip()
 _logo_url = urlparse(BOT_LOGO_URL_VALUE)
@@ -302,11 +282,7 @@ def is_admin_user(user: Any) -> bool:
     if user is None:
         return False
     user_id = getattr(user, "id", None)
-    if isinstance(user_id, int) and not isinstance(user_id, bool) and user_id in ADMIN_IDS:
-        return True
-    username = getattr(user, "username", None)
-    configured_usernames = {value.lstrip("@").casefold() for value in ADMIN_USERNAMES}
-    return isinstance(username, str) and username.casefold() in configured_usernames
+    return isinstance(user_id, int) and not isinstance(user_id, bool) and user_id in ADMIN_IDS
 
 
 def load_booking_code(bookie: str) -> tuple[str, str] | None:
@@ -681,7 +657,7 @@ async def set_promo_message(message: Message) -> None:
         return
     await asyncio.to_thread(save_setting, "promo_message", custom_text)
     await message.reply(
-        "✅ Promo message updated. It will appear on the Bonus button.\n\n"
+        "✅ Updated successfully! The promo message will appear on the Bonus button.\n\n"
         "✅ የፕሮሞ መልዕክቱ ተዘምኗል። በቦነስ ቁልፉ ላይ ይታያል።"
     )
 
@@ -712,7 +688,7 @@ async def set_vip_message(message: Message) -> None:
         return
     await asyncio.to_thread(save_setting, "vip_info", custom_text)
     await message.reply(
-        "✅ VIP information updated. Payment approval instructions remain in place.\n\n"
+        "✅ Updated successfully! VIP information changed; payment approval instructions remain in place.\n\n"
         "✅ የVIP መረጃው ተዘምኗል። የክፍያ ማጽደቂያ መመሪያዎቹ እንደተጠበቁ ይቆያሉ።"
     )
 
@@ -737,7 +713,7 @@ async def broadcast_message(message: Message, bot: Bot) -> None:
         )
         return
 
-    recipients = sorted(set(await asyncio.to_thread(load_user_ids)) | set(ADMIN_IDS))
+    recipients = sorted(set(await asyncio.to_thread(load_user_ids)))
     if not recipients:
         await message.reply(
             "There are no registered bot users to receive this broadcast.\n\n"
@@ -766,7 +742,7 @@ async def broadcast_message(message: Message, bot: Bot) -> None:
         failed += len(results) - sum(results)
 
     await message.reply(
-        f"📣 Broadcast complete. Delivered: {delivered}. Failed: {failed}.\n\n"
+        f"✅ Broadcast complete. Delivered: {delivered}. Failed: {failed}.\n\n"
         f"📣 ስርጭቱ ተጠናቋል። የደረሰላቸው: {delivered}። ያልደረሳቸው: {failed}።"
     )
 
@@ -916,10 +892,6 @@ async def run_health_server(started: asyncio.Future[None]) -> None:
 async def main() -> None:
     if not BOT_TOKEN:
         raise RuntimeError("Set BOT_TOKEN in .env before starting the bot.")
-    if not ADMIN_IDS:
-        raise RuntimeError(
-            "Set ADMIN_IDS to include the owner Telegram ID; 8827929191 is configured as the secondary admin."
-        )
 
     session = AiohttpSession(timeout=HTTP_TIMEOUT_SECONDS, limit=HTTP_CONNECTION_LIMIT)
     bot = Bot(
