@@ -58,6 +58,7 @@ if BOT_LOGO_URL_VALUE and not BOT_LOGO_URL:
 LOGO_FILE_ID_CACHE = BOT_LOGO_FILE_ID
 HTTP_TIMEOUT_SECONDS = 20
 POLLING_TIMEOUT_SECONDS = 30
+POLLING_CONFLICT_RETRY_SECONDS = 10
 UPDATE_CONCURRENCY_LIMIT = 512
 HTTP_CONNECTION_LIMIT = 256
 RATE_LIMIT_SECONDS = 0.8
@@ -638,21 +639,24 @@ async def main() -> None:
     )
     try:
         await server_started
-        await bot.delete_webhook(drop_pending_updates=False)
-        try:
-            await dispatcher.start_polling(
-                bot,
-                allowed_updates=dispatcher.resolve_used_update_types(),
-                polling_timeout=POLLING_TIMEOUT_SECONDS,
-                handle_as_tasks=True,
-                tasks_concurrency_limit=UPDATE_CONCURRENCY_LIMIT,
-            )
-        except TelegramConflictError:
-            logger.critical(
-                "Telegram polling conflict: another process is polling this bot token. "
-                "Run exactly one polling instance."
-            )
-            raise
+        await bot.delete_webhook(drop_pending_updates=True)
+        while True:
+            try:
+                await dispatcher.start_polling(
+                    bot,
+                    allowed_updates=dispatcher.resolve_used_update_types(),
+                    polling_timeout=POLLING_TIMEOUT_SECONDS,
+                    handle_as_tasks=True,
+                    tasks_concurrency_limit=UPDATE_CONCURRENCY_LIMIT,
+                )
+                break
+            except TelegramConflictError:
+                logger.exception(
+                    "Telegram polling conflict: another process is polling this bot token. "
+                    "Retrying in %s seconds; configure Render to run exactly one polling instance.",
+                    POLLING_CONFLICT_RETRY_SECONDS,
+                )
+                await asyncio.sleep(POLLING_CONFLICT_RETRY_SECONDS)
     finally:
         server_task.cancel()
         try:
