@@ -79,12 +79,11 @@ CHANNELS = (
     {"username": "@zansportnews", "link": "https://t.me/zansportnews", "title": "Zan Sport News"},
 )
 MENU_CODES = "🎯 Today's Free Codes"
-MENU_PROMO = "💎 1XBet Promo"
+MENU_BONUS = "🎁 200% Bonus & Promo Code"
 MENU_AGENT = "⚡ Deposit & Withdraw"
 MENU_PREDICTIONS = "⚽ Free Predictions"
 MENU_VIP = "⭐ VIP Channel"
-MENU_DEPOSIT = "💳 Deposit"
-MENU_WITHDRAWAL = "🏧 Withdrawal"
+MENU_DEPOSIT_WITHDRAWAL = "💳 Deposit & Withdrawal"
 MENU_SUPPORT = "📢 For Ads / Support"
 DEFAULT_CODES = {
     "1XBet": ("ZANF2026", "2.45"),
@@ -214,7 +213,7 @@ def main_menu() -> ReplyKeyboardMarkup:
     return ReplyKeyboardMarkup(
         keyboard=[
             [KeyboardButton(text=MENU_PREDICTIONS), KeyboardButton(text=MENU_VIP)],
-            [KeyboardButton(text=MENU_DEPOSIT), KeyboardButton(text=MENU_WITHDRAWAL)],
+            [KeyboardButton(text=MENU_DEPOSIT_WITHDRAWAL), KeyboardButton(text=MENU_BONUS)],
             [KeyboardButton(text=MENU_SUPPORT)],
         ],
         resize_keyboard=True,
@@ -329,16 +328,25 @@ async def show_booking_code(query: CallbackQuery) -> None:
     await query.answer()
 
 
-@router.message(F.text == MENU_PROMO)
-async def show_promo(message: Message) -> None:
+@router.message(F.text == MENU_BONUS)
+async def show_bonus_promo(message: Message) -> None:
+    keyboard = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="📲 Register & Claim Bonus", url=REGISTER_LINK)]
+        ]
+    )
     await message.answer(
-        "💎 <b>𝟏𝐗𝐁𝐄𝐓 · 200% WELCOME BONUS</b> 💎\n"
-        "━━━━━━━━━━━━━━━━━━━━━━━\n\n"
-        "Register with our promo code for the welcome offer of up to <b>30,000 ETB</b>.\n"
-        "Check the current offer terms and eligibility before registering.\n\n"
-        f"🏆 <b>PROMO CODE ➡️</b> <code>{PROMO_CODE}</code>\n\n"
-        f"🔗 <a href=\"{REGISTER_LINK}\">REGISTER WITH 1XBET</a>\n\n"
-        "Tap the code to copy it. Eligibility and bonus terms are set by 1XBet. Please gamble responsibly.",
+        "🎁 <b>EXCLUSIVE 200% FIRST DEPOSIT BONUS</b> 🎁\n"
+        "━━━━━━━━━━━━━━━━━━━━\n\n"
+        "🚀 <b>Eligible new customers may qualify for a bonus of up to 60,000 ETB.</b>\n\n"
+        "📌 <b>How to claim</b>\n"
+        f"1️⃣ Register using our official link: <a href=\"{REGISTER_LINK}\">Zan registration</a>\n"
+        f"2️⃣ Enter promo code <code>{PROMO_CODE}</code> during registration.\n"
+        "3️⃣ Make your first deposit and review the operator's bonus terms to confirm eligibility.\n\n"
+        "🔥 Check the current offer conditions before depositing. Bonus availability, amount, and crediting "
+        "are subject to the operator's terms. Please gamble responsibly.\n"
+        "━━━━━━━━━━━━━━━━━━━━",
+        reply_markup=keyboard,
         link_preview_options=LinkPreviewOptions(is_disabled=True),
     )
 
@@ -357,43 +365,25 @@ async def show_predictions_and_ads(message: Message) -> None:
     )
 
 
-@router.message(F.text == MENU_DEPOSIT)
-async def show_deposit_instructions(message: Message) -> None:
+@router.message(F.text == MENU_DEPOSIT_WITHDRAWAL)
+async def show_deposit_withdrawal_instructions(message: Message) -> None:
     keyboard = InlineKeyboardMarkup(
         inline_keyboard=[
-            [InlineKeyboardButton(text="💳 Contact @Zanspo1 for Deposit", url="https://t.me/Zanspo1")]
+            [InlineKeyboardButton(text="📩 Contact @Zanspo1", url="https://t.me/Zanspo1")]
         ]
     )
     await message.answer(
-        "💳 <b>DEPOSIT FUNDS</b> 💳\n"
+        "💳 <b>DEPOSITS & WITHDRAWALS</b> 🏧\n"
         "━━━━━━━━━━━━━━━━━━━━\n\n"
-        "📥 Secure manual deposit processing\n\n"
-        "📌 <b>Steps</b>\n"
-        "1️⃣ Contact @Zanspo1 for current payment account details.\n"
-        "2️⃣ Transfer your chosen amount using the instructions provided.\n"
+        "📥 <b>To deposit</b>\n"
+        "1️⃣ Contact @Zanspo1 for current payment details.\n"
+        "2️⃣ Complete your transfer using the instructions provided.\n"
         "3️⃣ Send the transaction confirmation or receipt to @Zanspo1 for verification.\n\n"
-        "Account updates are handled after the admin confirms the transaction.\n"
-        "━━━━━━━━━━━━━━━━━━━━",
-        reply_markup=keyboard,
-    )
-
-
-@router.message(F.text == MENU_WITHDRAWAL)
-async def show_withdrawal_instructions(message: Message) -> None:
-    keyboard = InlineKeyboardMarkup(
-        inline_keyboard=[
-            [InlineKeyboardButton(text="🏧 Request Withdrawal via @Zanspo1", url="https://t.me/Zanspo1")]
-        ]
-    )
-    await message.answer(
-        "🏧 <b>WITHDRAW FUNDS</b> 🏧\n"
-        "━━━━━━━━━━━━━━━━━━━━\n\n"
-        "📤 Withdrawal requests are processed by the admin.\n\n"
-        "📌 <b>Steps</b>\n"
-        "1️⃣ Message @Zanspo1 with your withdrawal request.\n"
-        "2️⃣ Provide your account identifier and preferred payment receiver details.\n"
-        "3️⃣ Follow the admin's instructions while your request is reviewed and processed.\n\n"
-        "Processing time may vary depending on verification and payment method.\n"
+        "📤 <b>To withdraw</b>\n"
+        "1️⃣ Contact @Zanspo1 with your payout request.\n"
+        "2️⃣ Provide your account identifier and preferred payment details.\n"
+        "3️⃣ Follow the admin's instructions while your request is reviewed.\n\n"
+        "All deposit and withdrawal requests are handled directly by @Zanspo1. Processing depends on verification and payment method.\n"
         "━━━━━━━━━━━━━━━━━━━━",
         reply_markup=keyboard,
     )
