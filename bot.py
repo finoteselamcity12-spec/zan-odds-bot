@@ -249,11 +249,11 @@ async def start(message: Message) -> None:
         return
     name = escape(message.from_user.first_name or "there")
     welcome_text = (
-        "🔥 <b>WELCOME TO ZAN ODDS OFFICIAL BOT</b> 🔥\n"
-        "━━━━━━━━━━━━━━━━━━━━━━━\n"
+        "🏆 <b>ZAN ODDS · OFFICIAL BOT</b> 🏆\n"
+        "━━━━━━━━━━━━━━━━━━━━\n"
         f"👋 <b>Welcome, {name}!</b>\n\n"
-        "🚀 Get live prediction links, 1XBet bonuses, and instant agent support.\n"
-        "👇 <b>Select a service below</b>"
+        "⚽ Free match tips · ⭐ Premium access · 💳 Account services\n\n"
+        "👇 <b>Choose an option below</b>"
     )
     logo_sources = [source for source in (LOGO_FILE_ID_CACHE, BOT_LOGO_URL) if source]
     for photo in dict.fromkeys(logo_sources):
@@ -346,12 +346,13 @@ async def show_promo(message: Message) -> None:
 @router.message(F.text == MENU_PREDICTIONS)
 async def show_predictions_and_ads(message: Message) -> None:
     await message.answer(
-        "⚽ <b>𝑭𝑹𝑬𝑬 𝑷𝑹𝑬𝑫𝑰𝑪𝑻𝑰𝑶𝑵𝑺 & 𝑨𝑫𝑺</b> ⚽\n"
-        "━━━━━━━━━━━━━━━━━━━━━━━\n\n"
-        "Follow our channels for daily predictions:\n"
-        "• <a href=\"https://t.me/mrt_tips\">MRT Tips</a>\n"
-        f"• <a href=\"{PUBLIC_CHANNEL_URL}\">Zan Sport News</a>\n\n"
-        f"📢 <b>FOR ADS 👉</b> {ADS_CONTACT}",
+        "⚽ <b>ZAN SPORT NEWS · DAILY FREE TIPS</b> ⚽\n"
+        "━━━━━━━━━━━━━━━━━━━━\n\n"
+        "🔥 <b>Today's featured channels</b>\n"
+        "• 🎯 <a href=\"https://t.me/mrt_tips\">MRT Tips</a>\n"
+        f"• 📢 <a href=\"{PUBLIC_CHANNEL_URL}\">Zan Sport News</a>\n\n"
+        "📌 Follow for daily match analysis and free predictions.\n"
+        "━━━━━━━━━━━━━━━━━━━━",
         link_preview_options=LinkPreviewOptions(is_disabled=True),
     )
 
@@ -360,15 +361,19 @@ async def show_predictions_and_ads(message: Message) -> None:
 async def show_deposit_instructions(message: Message) -> None:
     keyboard = InlineKeyboardMarkup(
         inline_keyboard=[
-            [InlineKeyboardButton(text="📩 Contact @Zanspo1", url="https://t.me/Zanspo1")]
+            [InlineKeyboardButton(text="💳 Contact @Zanspo1 for Deposit", url="https://t.me/Zanspo1")]
         ]
     )
     await message.answer(
-        "💳 <b>DEPOSIT INSTRUCTIONS</b>\n"
-        "━━━━━━━━━━━━━━━━━━━━━━\n\n"
-        "Contact @Zanspo1 directly for the current deposit instructions. After completing your deposit, "
-        "send your proof of payment or transaction details to the admin for confirmation.\n\n"
-        "Use the contact button below to message the admin.",
+        "💳 <b>DEPOSIT FUNDS</b> 💳\n"
+        "━━━━━━━━━━━━━━━━━━━━\n\n"
+        "📥 Secure manual deposit processing\n\n"
+        "📌 <b>Steps</b>\n"
+        "1️⃣ Contact @Zanspo1 for current payment account details.\n"
+        "2️⃣ Transfer your chosen amount using the instructions provided.\n"
+        "3️⃣ Send the transaction confirmation or receipt to @Zanspo1 for verification.\n\n"
+        "Account updates are handled after the admin confirms the transaction.\n"
+        "━━━━━━━━━━━━━━━━━━━━",
         reply_markup=keyboard,
     )
 
@@ -377,15 +382,19 @@ async def show_deposit_instructions(message: Message) -> None:
 async def show_withdrawal_instructions(message: Message) -> None:
     keyboard = InlineKeyboardMarkup(
         inline_keyboard=[
-            [InlineKeyboardButton(text="📩 Request Withdrawal from @Zanspo1", url="https://t.me/Zanspo1")]
+            [InlineKeyboardButton(text="🏧 Request Withdrawal via @Zanspo1", url="https://t.me/Zanspo1")]
         ]
     )
     await message.answer(
-        "🏧 <b>WITHDRAWAL REQUEST</b>\n"
-        "━━━━━━━━━━━━━━━━━━━━━━\n\n"
-        "For withdrawal processing, message @Zanspo1 directly with your payout request and the required "
-        "transaction or account details. The admin will guide you through the next steps.\n\n"
-        "Use the contact button below to submit your request.",
+        "🏧 <b>WITHDRAW FUNDS</b> 🏧\n"
+        "━━━━━━━━━━━━━━━━━━━━\n\n"
+        "📤 Withdrawal requests are processed by the admin.\n\n"
+        "📌 <b>Steps</b>\n"
+        "1️⃣ Message @Zanspo1 with your withdrawal request.\n"
+        "2️⃣ Provide your account identifier and preferred payment receiver details.\n"
+        "3️⃣ Follow the admin's instructions while your request is reviewed and processed.\n\n"
+        "Processing time may vary depending on verification and payment method.\n"
+        "━━━━━━━━━━━━━━━━━━━━",
         reply_markup=keyboard,
     )
 
@@ -406,18 +415,22 @@ async def show_agent(message: Message) -> None:
 async def show_vip_channel(message: Message) -> None:
     keyboard = InlineKeyboardMarkup(
         inline_keyboard=[
-            [InlineKeyboardButton(text="📩 Contact @Zanspo1 for Payment", url="https://t.me/Zanspo1")]
+            [InlineKeyboardButton(text="📩 Message Admin @Zanspo1", url="https://t.me/Zanspo1")]
         ]
     )
     await message.answer(
-        "⭐ <b>VIP CHANNEL ACCESS</b> ⭐\n"
-        "━━━━━━━━━━━━━━━━━━━━━━━\n\n"
-        "Get premium sports predictions and exclusive updates in our VIP channel.\n\n"
-        "Contact <a href=\"https://t.me/Zanspo1\">@Zanspo1</a> for the current payment instructions. "
-        "After paying, send your proof of payment or transaction ID directly to @Zanspo1 for review.\n\n"
-        "The private VIP invite is not shown here. @Zanspo1 will send it to you only after verifying and approving "
-        "your payment. No access is provided before approval.\n\n"
-        "Please wait for confirmation before expecting access. Contact the admin if you need help.",
+        "⭐ <b>ZAN PREMIUM VIP CLUB</b> ⭐\n"
+        "━━━━━━━━━━━━━━━━━━━━\n\n"
+        "💎 <b>VIP benefits</b>\n"
+        "• 🎯 Premium daily tips and match analysis\n"
+        "• 🚀 Exclusive selections and accumulator slips\n"
+        "• 📈 Private channel access after payment approval\n\n"
+        "🔒 <b>How to join</b>\n"
+        "1️⃣ Contact @Zanspo1 for payment instructions.\n"
+        "2️⃣ Complete payment and send the receipt or transaction ID to the admin.\n"
+        "3️⃣ The private invite is sent only after @Zanspo1 verifies and approves your payment.\n\n"
+        "💬 Use the button below to contact the admin. The private invite is not displayed here.\n"
+        "━━━━━━━━━━━━━━━━━━━━",
         reply_markup=keyboard,
         link_preview_options=LinkPreviewOptions(is_disabled=True),
     )
@@ -425,13 +438,24 @@ async def show_vip_channel(message: Message) -> None:
 
 @router.message(F.text == MENU_SUPPORT)
 async def show_support(message: Message) -> None:
+    keyboard = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="📢 Contact @zan_fvrr", url="https://t.me/zan_fvrr")],
+            [InlineKeyboardButton(text="🤝 Contact @sent2000s", url="https://t.me/sent2000s")],
+            [InlineKeyboardButton(text="📩 General Support · @Zanspo1", url="https://t.me/Zanspo1")],
+        ]
+    )
     await message.answer(
-        "📢 <b>ADVERTISING & SUPPORT</b>\n"
-        "━━━━━━━━━━━━━━━━━━━━━━\n\n"
-        f"For advertising and promotions, contact {ADS_CONTACT}.\n\n"
-        f"For company collaborations, contact {COLLAB_CONTACT}.\n\n"
-        f"For account or VIP payment support, contact {AGENT_CONTACT}.",
-        reply_markup=main_menu(),
+        "📢 <b>ADVERTISING · PARTNERSHIPS · SUPPORT</b> 📢\n"
+        "━━━━━━━━━━━━━━━━━━━━\n\n"
+        "💼 <b>Business and promotions</b>\n"
+        "Reach an active sports audience through advertising and collaborations.\n"
+        f"• Ads: {ADS_CONTACT}\n"
+        f"• Company collaborations: {COLLAB_CONTACT}\n\n"
+        "🛠️ <b>Customer care and account support</b>\n"
+        f"• General support and VIP assistance: {AGENT_CONTACT}\n"
+        "━━━━━━━━━━━━━━━━━━━━",
+        reply_markup=keyboard,
     )
 
 
