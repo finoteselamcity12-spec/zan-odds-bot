@@ -13,7 +13,7 @@ from typing import Any, Iterator
 from urllib.parse import urlparse
 
 from aiohttp import web
-from aiogram import Bot, Dispatcher, F, Router
+from aiogram import BaseMiddleware, Bot, Dispatcher, F, Router
 from aiogram.client.default import DefaultBotProperties
 from aiogram.client.session.aiohttp import AiohttpSession
 from aiogram.enums import ParseMode
@@ -72,7 +72,6 @@ except ValueError:
 PROMO_CODE = "ZANODDS"
 PROMO_MESSAGE: str | None = None
 VIP_INFO: str | None = None
-ACTIVE_USER_IDS: set[int] = set()
 REGISTER_LINK = "https://cropped.link/Zanf"
 ADS_CONTACT = "@zan_fvrr"
 COLLAB_CONTACT = "@sent2000s"
@@ -112,6 +111,19 @@ command_router = Router(name="commands")
 router = Router(name="user-messages")
 
 
+class UserRegistrationMiddleware(BaseMiddleware):
+    async def __call__(self, handler: Any, event: Any, data: dict[str, Any]) -> Any:
+        user = getattr(event, "from_user", None)
+        if user is not None:
+            await asyncio.to_thread(register_user, user.id)
+        return await handler(event, data)
+
+
+user_registration_middleware = UserRegistrationMiddleware()
+router.message.outer_middleware(user_registration_middleware)
+router.callback_query.outer_middleware(user_registration_middleware)
+
+
 @contextmanager
 def open_database() -> Iterator[sqlite3.Connection]:
     DATABASE_PATH.parent.mkdir(parents=True, exist_ok=True)
@@ -139,6 +151,9 @@ def initialize_database() -> None:
                 setting_value TEXT NOT NULL
             )"""
         )
+        connection.execute(
+            "CREATE TABLE IF NOT EXISTS bot_users (user_id INTEGER PRIMARY KEY)"
+        )
         connection.execute("DROP TABLE IF EXISTS daily_spins")
         connection.executemany(
             "INSERT OR IGNORE INTO booking_codes (bookie, code, odds) VALUES (?, ?, ?)",
@@ -151,6 +166,22 @@ def initialize_database() -> None:
                    WHERE bookie = ? AND code = ? AND odds = ?""",
                 (new_code, new_odds, bookie, old_code, old_odds),
             )
+
+
+def register_user(user_id: int) -> None:
+    with open_database() as connection:
+        connection.execute(
+            "INSERT OR IGNORE INTO bot_users (user_id) VALUES (?)",
+            (user_id,),
+        )
+
+
+def load_user_ids() -> list[int]:
+    with open_database() as connection:
+        rows = connection.execute(
+            "SELECT user_id FROM bot_users ORDER BY user_id"
+        ).fetchall()
+    return [row["user_id"] for row in rows]
 
 
 def load_setting(setting_key: str) -> str | None:
@@ -236,7 +267,7 @@ async def start(message: Message) -> None:
     global LOGO_FILE_ID_CACHE
     if not message.from_user:
         return
-    ACTIVE_USER_IDS.add(message.from_user.id)
+    await asyncio.to_thread(register_user, message.from_user.id)
     name = escape(message.from_user.first_name or "there")
     welcome_text = (
         "🎯 <b>Welcome to ZAN SPORT NEWS OFFICIAL BOT!</b>\n"
@@ -678,7 +709,7 @@ async def broadcast_message(message: Message, bot: Bot, command: CommandObject) 
         )
         return
 
-    recipients = sorted(ACTIVE_USER_IDS)
+    recipients = await asyncio.to_thread(load_user_ids)
     if not recipients:
         await message.reply(
             "There are no registered bot users to receive this broadcast.\n\n"
@@ -720,8 +751,8 @@ async def broadcast_message(message: Message, bot: Bot, command: CommandObject) 
         failed += len(results) - sum(results)
 
     await message.reply(
-        f"✅ Broadcast complete. Delivered: {delivered}. Failed: {failed}.\n\n"
-        f"📣 ስርጭቱ ተጠናቋል። የደረሰላቸው: {delivered}። ያልደረሳቸው: {failed}።"
+        f"✅ Broadcast complete. Total users: {len(recipients)}. Successfully delivered: {delivered}. Failed: {failed}.\n\n"
+        f"📣 ስርጭቱ ተጠናቋል። ጠቅላላ ተጠቃሚዎች: {len(recipients)}። የደረሰላቸው: {delivered}። ያልደረሳቸው: {failed}።"
     )
 
 
