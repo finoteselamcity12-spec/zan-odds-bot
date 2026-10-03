@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Any, Iterator
 from urllib.parse import urlparse
 
+from aiohttp import web
 from aiogram import BaseMiddleware, Bot, Dispatcher, F, Router
 from aiogram.client.default import DefaultBotProperties
 from aiogram.client.session.aiohttp import AiohttpSession
@@ -564,6 +565,10 @@ async def on_startup() -> None:
     logger.info("Database initialized")
 
 
+async def health_check(request: web.Request) -> web.Response:
+    return web.Response(text="Bot is running live 24/7!")
+
+
 async def main() -> None:
     if not BOT_TOKEN:
         raise RuntimeError("Set BOT_TOKEN in .env before starting the bot.")
@@ -582,13 +587,22 @@ async def main() -> None:
     dispatcher = Dispatcher(storage=MemoryStorage())
     dispatcher.include_router(router)
     dispatcher.startup.register(on_startup)
+    app = web.Application()
+    app.router.add_get("/", health_check)
+    web_runner = web.AppRunner(app)
     try:
+        await web_runner.setup()
+        port = int(os.environ.get("PORT", 8080))
+        site = web.TCPSite(web_runner, host="0.0.0.0", port=port)
+        await site.start()
+        logger.info("Health server listening on 0.0.0.0:%s", port)
         await dispatcher.start_polling(
             bot,
             allowed_updates=dispatcher.resolve_used_update_types(),
             polling_timeout=POLLING_TIMEOUT_SECONDS,
         )
     finally:
+        await web_runner.cleanup()
         await bot.session.close()
 
 
