@@ -142,6 +142,8 @@ class UserRateLimitMiddleware(BaseMiddleware):
                     await event.answer("Please wait a moment before trying again.")
                 except TelegramAPIError:
                     logger.debug("Could not acknowledge rate-limited callback")
+            elif isinstance(event, Message) and event.text:
+                await event.answer("Please wait a moment before sending another message.")
             return None
         return await handler(event, data)
 
@@ -460,6 +462,19 @@ async def forward_receipt(message: Message, bot: Bot) -> None:
     await message.answer(
         "✅ Screenshot sent to the admin for review."
     )
+
+
+@router.message(F.text)
+async def fallback_text(message: Message) -> None:
+    await message.answer(
+        "I didn’t recognize that message. Use one of the menu buttons below, or send /start to reopen the menu.",
+        reply_markup=main_menu(),
+    )
+
+
+@router.callback_query()
+async def fallback_callback(query: CallbackQuery) -> None:
+    await query.answer("This action is no longer available. Please use the menu.", show_alert=True)
 
 
 @router.channel_post()
