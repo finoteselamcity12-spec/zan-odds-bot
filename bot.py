@@ -5,8 +5,6 @@ import logging
 import os
 import re
 import sqlite3
-import time
-from collections import OrderedDict
 from contextlib import contextmanager
 from decimal import Decimal
 from html import escape
@@ -61,8 +59,6 @@ POLLING_TIMEOUT_SECONDS = 30
 POLLING_CONFLICT_RETRY_SECONDS = 10
 UPDATE_CONCURRENCY_LIMIT = 512
 HTTP_CONNECTION_LIMIT = 256
-RATE_LIMIT_SECONDS = 0.8
-RATE_LIMIT_MAX_USERS = 50_000
 
 DATABASE_PATH = Path(os.getenv("BOT_DATABASE", "bot_data.sqlite3"))
 CHANNEL_USERNAME = "@zansportnews"
@@ -74,6 +70,9 @@ except ValueError:
     logger.warning("CHANNEL_CODE_MESSAGE_ID must be a positive integer; using channel-link fallback")
     CHANNEL_CODE_MESSAGE_ID = None
 PROMO_CODE = "ZANODDS"
+PROMO_MESSAGE: str | None = None
+VIP_INFO: str | None = None
+ACTIVE_USER_IDS: set[int] = set()
 REGISTER_LINK = "https://cropped.link/Zanf"
 ADS_CONTACT = "@zan_fvrr"
 COLLAB_CONTACT = "@sent2000s"
@@ -113,66 +112,9 @@ command_router = Router(name="commands")
 router = Router(name="user-messages")
 
 
-class UserRateLimitMiddleware(BaseMiddleware):
-    """Limit each user's incoming bot updates without unbounded state growth."""
-
-    def __init__(self, interval: float = RATE_LIMIT_SECONDS, cache_ttl: float = 600) -> None:
-        self.interval = interval
-        self.cache_ttl = cache_ttl
-        self._last_update: OrderedDict[int, float] = OrderedDict()
-        self._lock = asyncio.Lock()
-        self._checks = 0
-
-    async def __call__(self, handler: Any, event: Any, data: dict[str, Any]) -> Any:
-        user = getattr(event, "from_user", None)
-        if user is None:
-            return await handler(event, data)
-
-        now = time.monotonic()
-        async with self._lock:
-            previous = self._last_update.get(user.id)
-            allowed = previous is None or now - previous >= self.interval
-            if allowed:
-                self._last_update[user.id] = now
-                self._last_update.move_to_end(user.id)
-            self._checks += 1
-            if self._checks % 256 == 0:
-                cutoff = now - self.cache_ttl
-                while self._last_update:
-                    oldest_user, oldest_update = next(iter(self._last_update.items()))
-                    if oldest_update >= cutoff:
-                        break
-                    self._last_update.pop(oldest_user)
-            while len(self._last_update) > RATE_LIMIT_MAX_USERS:
-                self._last_update.popitem(last=False)
-
-        if not allowed:
-            if isinstance(event, CallbackQuery):
-                try:
-                    await event.answer("Please wait before trying again.\n\nእባክዎ እንደገና ከመሞከርዎ በፊት ትንሽ ይጠብቁ።")
-                except TelegramAPIError:
-                    logger.debug("Could not acknowledge rate-limited callback")
-            elif isinstance(event, Message):
-                response = (
-                    "Please wait before sending another message.\n\nእባክዎ ሌላ መልዕክት ከመላክዎ በፊት ትንሽ ይጠብቁ።"
-                    if event.text
-                    else "⚠️ Only button navigation is supported!\n\n⚠️ እባክዎ የምናሌ ቁልፎቹን ብቻ ይጠቀሙ።"
-                )
-                try:
-                    await event.answer(response, reply_markup=main_menu())
-                except TelegramAPIError:
-                    logger.debug("Could not acknowledge rate-limited message")
-            return None
-        return await handler(event, data)
-
-
-user_rate_limit = UserRateLimitMiddleware()
-
-
 class IsAdmin(BaseFilter):
-    def __call__(self, event: Message | CallbackQuery) -> bool:
-        user = event.from_user
-        return user is not None and user.id in ADMIN_IDS
+    def __call__(self, message: Message) -> bool:
+        return message.from_user is not None and message.from_user.id in ADMIN_IDS
 
 
 class UpdateErrorBoundaryMiddleware(BaseMiddleware):
@@ -186,9 +128,8 @@ class UpdateErrorBoundaryMiddleware(BaseMiddleware):
             try:
                 if isinstance(event, Message):
                     await event.answer(
-                        "⚠️ Only button navigation is supported!\n"
-                        "\n⚠️ እባክዎ የምናሌ ቁልፎቹን ብቻ ይጠቀሙ።",
-                        reply_markup=main_menu(),
+                        "⚠️ Something went wrong while processing your request. Please try again.\n\n"
+                        "⚠️ ጥያቄዎን በማስኬድ ላይ ችግር ተፈጥሯል። እባክዎ እንደገና ይሞክሩ።"
                     )
                 elif isinstance(event, CallbackQuery):
                     await event.answer("⚠️ Please use the menu buttons.\n\nእባክዎ የምናሌ ቁልፎቹን ይጠቀሙ።", show_alert=True)
@@ -199,12 +140,9 @@ class UpdateErrorBoundaryMiddleware(BaseMiddleware):
 
 update_error_boundary = UpdateErrorBoundaryMiddleware()
 command_router.message.outer_middleware(update_error_boundary)
-command_router.message.outer_middleware(user_rate_limit)
 router.message.outer_middleware(update_error_boundary)
 router.callback_query.outer_middleware(update_error_boundary)
 router.channel_post.outer_middleware(update_error_boundary)
-router.message.outer_middleware(user_rate_limit)
-router.callback_query.outer_middleware(user_rate_limit)
 
 
 @contextmanager
@@ -229,9 +167,6 @@ def initialize_database() -> None:
             )"""
         )
         connection.execute(
-            "CREATE TABLE IF NOT EXISTS bot_users (user_id INTEGER PRIMARY KEY)"
-        )
-        connection.execute(
             """CREATE TABLE IF NOT EXISTS bot_settings (
                 setting_key TEXT PRIMARY KEY,
                 setting_value TEXT NOT NULL
@@ -249,17 +184,6 @@ def initialize_database() -> None:
                    WHERE bookie = ? AND code = ? AND odds = ?""",
                 (new_code, new_odds, bookie, old_code, old_odds),
             )
-
-
-def register_user(user_id: int) -> None:
-    with open_database() as connection:
-        connection.execute("INSERT OR IGNORE INTO bot_users (user_id) VALUES (?)", (user_id,))
-
-
-def load_user_ids() -> list[int]:
-    with open_database() as connection:
-        rows = connection.execute("SELECT user_id FROM bot_users ORDER BY user_id").fetchall()
-    return [row["user_id"] for row in rows]
 
 
 def load_setting(setting_key: str) -> str | None:
@@ -345,7 +269,7 @@ async def start(message: Message) -> None:
     global LOGO_FILE_ID_CACHE
     if not message.from_user:
         return
-    await asyncio.to_thread(register_user, message.from_user.id)
+    ACTIVE_USER_IDS.add(message.from_user.id)
     name = escape(message.from_user.first_name or "there")
     welcome_text = (
         "🎯 <b>Welcome to ZAN SPORT NEWS OFFICIAL BOT!</b>\n"
@@ -444,7 +368,7 @@ async def show_bonus_promo(message: Message) -> None:
             [InlineKeyboardButton(text="📲 Register & Claim Bonus", url=REGISTER_LINK)]
         ]
     )
-    custom_message = await asyncio.to_thread(load_setting, "promo_message")
+    custom_message = PROMO_MESSAGE
     if custom_message:
         english_promo = escape(custom_message)
         amharic_promo = (
@@ -566,7 +490,7 @@ async def show_vip_channel(message: Message) -> None:
             [InlineKeyboardButton(text=f"📩 Message Admin {contact_info}", url=contact_url)]
         ]
     )
-    custom_vip_info = await asyncio.to_thread(load_setting, "vip_info")
+    custom_vip_info = VIP_INFO
     if custom_vip_info and VIP_INVITE_URL_RE.search(custom_vip_info):
         logger.warning("Stored VIP information contained a private invite URL; using safe defaults")
         custom_vip_info = None
@@ -643,6 +567,7 @@ async def show_support(message: Message) -> None:
 
 @command_router.message(Command("set_promo"), IsAdmin())
 async def set_promo_message(message: Message) -> None:
+    global PROMO_MESSAGE
     parts = (message.text or "").split(maxsplit=1)
     if len(parts) != 2 or not parts[1].strip():
         await message.reply(
@@ -657,7 +582,7 @@ async def set_promo_message(message: Message) -> None:
             f"የፕሮሞ ጽሑፉ ከ{MAX_ADMIN_TEXT_LENGTH} ቁምፊዎች መብለጥ የለበትም።"
         )
         return
-    await asyncio.to_thread(save_setting, "promo_message", custom_text)
+    PROMO_MESSAGE = custom_text
     await message.reply(
         "✅ Updated successfully! The promo message will appear on the Bonus button.\n\n"
         "✅ የፕሮሞ መልዕክቱ ተዘምኗል። በቦነስ ቁልፉ ላይ ይታያል።"
@@ -666,6 +591,7 @@ async def set_promo_message(message: Message) -> None:
 
 @command_router.message(Command("set_vip"), IsAdmin())
 async def set_vip_message(message: Message) -> None:
+    global VIP_INFO
     parts = (message.text or "").split(maxsplit=1)
     if len(parts) != 2 or not parts[1].strip():
         await message.reply(
@@ -686,7 +612,7 @@ async def set_vip_message(message: Message) -> None:
             "የግል የTelegram መቀላቀያ ሊንክ አያካትቱ። የጸደቁ ተጠቃሚዎች ሊንኩን በቀጥታ ከአስተዳዳሪ ያገኛሉ።"
         )
         return
-    await asyncio.to_thread(save_setting, "vip_info", custom_text)
+    VIP_INFO = custom_text
     await message.reply(
         "✅ Updated successfully! VIP information changed; payment approval instructions remain in place.\n\n"
         "✅ የVIP መረጃው ተዘምኗል። የክፍያ ማጽደቂያ መመሪያዎቹ እንደተጠበቁ ይቆያሉ።"
@@ -743,7 +669,7 @@ async def broadcast_message(message: Message, bot: Bot, command: CommandObject) 
         )
         return
 
-    recipients = sorted(set(await asyncio.to_thread(load_user_ids)))
+    recipients = sorted(ACTIVE_USER_IDS)
     if not recipients:
         await message.reply(
             "There are no registered bot users to receive this broadcast.\n\n"
