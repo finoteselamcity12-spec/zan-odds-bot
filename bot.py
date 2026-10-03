@@ -538,7 +538,7 @@ async def main() -> None:
     web_runner = web.AppRunner(app)
     try:
         await web_runner.setup()
-        port = int(os.environ.get("PORT", 8080))
+        port = int(os.environ.get("PORT", 10000))
         site = web.TCPSite(web_runner, host="0.0.0.0", port=port)
         await site.start()
         logger.info("Health server listening on 0.0.0.0:%s", port)
