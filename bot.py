@@ -20,7 +20,7 @@ from aiogram.client.default import DefaultBotProperties
 from aiogram.client.session.aiohttp import AiohttpSession
 from aiogram.enums import ParseMode
 from aiogram.exceptions import TelegramAPIError, TelegramConflictError
-from aiogram.filters import BaseFilter, Command, CommandStart
+from aiogram.filters import BaseFilter, Command
 from aiogram.filters.command import CommandObject
 from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram.types import (
@@ -109,7 +109,8 @@ TELEGRAM_USERNAME_RE = re.compile(r"^@?[A-Za-z0-9_]{5,32}$")
 MAX_ADMIN_TEXT_LENGTH = 2500
 PROMO_MARKER = "\n\n📣 Follow Zan Odds:\n\n📣 የዛን ኦድስን ይከታተሉ:"
 
-router = Router()
+command_router = Router(name="commands")
+router = Router(name="user-messages")
 
 
 class UserRateLimitMiddleware(BaseMiddleware):
@@ -197,6 +198,8 @@ class UpdateErrorBoundaryMiddleware(BaseMiddleware):
 
 
 update_error_boundary = UpdateErrorBoundaryMiddleware()
+command_router.message.outer_middleware(update_error_boundary)
+command_router.message.outer_middleware(user_rate_limit)
 router.message.outer_middleware(update_error_boundary)
 router.callback_query.outer_middleware(update_error_boundary)
 router.channel_post.outer_middleware(update_error_boundary)
@@ -337,7 +340,7 @@ async def check_all_subscriptions(user_id: int) -> bool:
     return True
 
 
-@router.message(CommandStart())
+@command_router.message(Command("start"))
 async def start(message: Message) -> None:
     global LOGO_FILE_ID_CACHE
     if not message.from_user:
@@ -638,7 +641,7 @@ async def show_support(message: Message) -> None:
     )
 
 
-@router.message(Command("set_promo"), IsAdmin())
+@command_router.message(Command("set_promo"), IsAdmin())
 async def set_promo_message(message: Message) -> None:
     parts = (message.text or "").split(maxsplit=1)
     if len(parts) != 2 or not parts[1].strip():
@@ -661,7 +664,7 @@ async def set_promo_message(message: Message) -> None:
     )
 
 
-@router.message(Command("set_vip"), IsAdmin())
+@command_router.message(Command("set_vip"), IsAdmin())
 async def set_vip_message(message: Message) -> None:
     parts = (message.text or "").split(maxsplit=1)
     if len(parts) != 2 or not parts[1].strip():
@@ -690,7 +693,7 @@ async def set_vip_message(message: Message) -> None:
     )
 
 
-@router.message(Command("set_contact"), IsAdmin())
+@command_router.message(Command("set_contact"), IsAdmin())
 async def set_contact_info(message: Message) -> None:
     parts = (message.text or "").split(maxsplit=1)
     if len(parts) != 2 or not parts[1].strip():
@@ -714,7 +717,7 @@ async def set_contact_info(message: Message) -> None:
     )
 
 
-@router.message(Command("broadcast"), IsAdmin())
+@command_router.message(Command("broadcast"), IsAdmin())
 async def broadcast_message(message: Message, bot: Bot, command: CommandObject) -> None:
     broadcast_text = (command.args or "").strip()
     photo_message = message if message.photo else (
@@ -782,7 +785,7 @@ async def broadcast_message(message: Message, bot: Bot, command: CommandObject) 
     )
 
 
-@router.message(Command("setcode"), IsAdmin())
+@command_router.message(Command("setcode"), IsAdmin())
 async def set_booking_code(message: Message) -> None:
     parts = (message.text or "").split(maxsplit=3)
     if len(parts) != 4:
@@ -933,6 +936,7 @@ async def main() -> None:
         default=DefaultBotProperties(parse_mode=ParseMode.HTML),
     )
     dispatcher = Dispatcher(storage=MemoryStorage())
+    dispatcher.include_router(command_router)
     dispatcher.include_router(router)
     dispatcher.startup.register(on_startup)
     server_started: asyncio.Future[None] = asyncio.get_running_loop().create_future()
