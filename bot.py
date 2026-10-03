@@ -80,9 +80,9 @@ CHANNELS = (
 MENU_CODES = "🎯 Today's Free Codes"
 MENU_PROMO = "💎 1XBet Promo"
 MENU_AGENT = "⚡ Deposit & Withdraw"
-MENU_PREDICTIONS = "⚽ Predictions & Ads"
-MENU_VIP = "⭐ Join VIP Channel"
-MENU_HELP = "📩 Help & Support"
+MENU_PREDICTIONS = "⚽ Free Predictions"
+MENU_VIP = "⭐ VIP Channel"
+MENU_SUPPORT = "📢 For Ads / Support"
 DEFAULT_CODES = {
     "1XBet": ("ZANF2026", "2.45"),
     "SportyBet": ("BC89210", "3.10"),
@@ -208,12 +208,12 @@ def save_booking_code(bookie: str, code: str, odds: str) -> None:
 def main_menu() -> ReplyKeyboardMarkup:
     return ReplyKeyboardMarkup(
         keyboard=[
-            [KeyboardButton(text=MENU_CODES)],
-            [KeyboardButton(text=MENU_PROMO), KeyboardButton(text=MENU_AGENT)],
-            [KeyboardButton(text=MENU_PREDICTIONS), KeyboardButton(text=MENU_VIP)],
-            [KeyboardButton(text=MENU_HELP)],
+            [KeyboardButton(text=MENU_PREDICTIONS)],
+            [KeyboardButton(text=MENU_VIP)],
+            [KeyboardButton(text=MENU_SUPPORT)],
         ],
         resize_keyboard=True,
+        is_persistent=True,
         row_width=1,
         input_field_placeholder="Choose a service",
     )
@@ -383,12 +383,13 @@ async def show_vip_channel(message: Message) -> None:
     )
 
 
-@router.message(F.text == MENU_HELP)
-async def show_help(message: Message) -> None:
+@router.message(F.text == MENU_SUPPORT)
+async def show_support(message: Message) -> None:
     await message.answer(
-        "ℹ️ <b>HELP & SUPPORT</b>\n"
+        "📢 <b>ADVERTISING & SUPPORT</b>\n"
         "━━━━━━━━━━━━━━━━━━━━━━\n\n"
-        f"For advertising and business questions, contact {ADS_CONTACT}.",
+        f"For advertising and promotions, contact {ADS_CONTACT}.\n\n"
+        f"For account or VIP payment support, contact {AGENT_CONTACT}.",
         reply_markup=main_menu(),
     )
 
@@ -515,6 +516,27 @@ async def health_check(request: web.Request) -> web.Response:
     return web.Response(text="Bot is running live 24/7!")
 
 
+async def run_health_server(started: asyncio.Future[None]) -> None:
+    app = web.Application()
+    app.router.add_get("/", health_check)
+    web_runner = web.AppRunner(app)
+    try:
+        await web_runner.setup()
+        port = int(os.environ.get("PORT", 10000))
+        site = web.TCPSite(web_runner, host="0.0.0.0", port=port)
+        await site.start()
+        logger.info("Health server listening on 0.0.0.0:%s", port)
+        if not started.done():
+            started.set_result(None)
+        await asyncio.Event().wait()
+    except BaseException as error:
+        if not started.done():
+            started.set_exception(error)
+        raise
+    finally:
+        await web_runner.cleanup()
+
+
 async def main() -> None:
     if not BOT_TOKEN:
         raise RuntimeError("Set BOT_TOKEN in .env before starting the bot.")
@@ -533,22 +555,24 @@ async def main() -> None:
     dispatcher = Dispatcher(storage=MemoryStorage())
     dispatcher.include_router(router)
     dispatcher.startup.register(on_startup)
-    app = web.Application()
-    app.router.add_get("/", health_check)
-    web_runner = web.AppRunner(app)
+    server_started: asyncio.Future[None] = asyncio.get_running_loop().create_future()
+    server_task = asyncio.create_task(
+        run_health_server(server_started),
+        name="render-health-server",
+    )
     try:
-        await web_runner.setup()
-        port = int(os.environ.get("PORT", 10000))
-        site = web.TCPSite(web_runner, host="0.0.0.0", port=port)
-        await site.start()
-        logger.info("Health server listening on 0.0.0.0:%s", port)
+        await server_started
         await dispatcher.start_polling(
             bot,
             allowed_updates=dispatcher.resolve_used_update_types(),
             polling_timeout=POLLING_TIMEOUT_SECONDS,
         )
     finally:
-        await web_runner.cleanup()
+        server_task.cancel()
+        try:
+            await server_task
+        except asyncio.CancelledError:
+            pass
         await bot.session.close()
 
 
