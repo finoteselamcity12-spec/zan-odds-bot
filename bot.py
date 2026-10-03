@@ -73,6 +73,7 @@ except ValueError:
 PROMO_CODE = "ZANF"
 REGISTER_LINK = "https://cropped.link/Zanf"
 ADS_CONTACT = "@zan_fvrr"
+COLLAB_CONTACT = "@sent2000s"
 AGENT_CONTACT = "@Zanspo1"
 CHANNELS = (
     {"username": "@zansportnews", "link": "https://t.me/zansportnews", "title": "Zan Sport News"},
@@ -348,6 +349,7 @@ async def show_predictions_and_ads(message: Message) -> None:
         "⚽ <b>𝑭𝑹𝑬𝑬 𝑷𝑹𝑬𝑫𝑰𝑪𝑻𝑰𝑶𝑵𝑺 & 𝑨𝑫𝑺</b> ⚽\n"
         "━━━━━━━━━━━━━━━━━━━━━━━\n\n"
         "Follow our channels for daily predictions:\n"
+        "• <a href=\"https://t.me/mrt_tips\">MRT Tips</a>\n"
         f"• <a href=\"{PUBLIC_CHANNEL_URL}\">Zan Sport News</a>\n\n"
         f"📢 <b>FOR ADS 👉</b> {ADS_CONTACT}",
         link_preview_options=LinkPreviewOptions(is_disabled=True),
@@ -413,8 +415,8 @@ async def show_vip_channel(message: Message) -> None:
         "Get premium sports predictions and exclusive updates in our VIP channel.\n\n"
         "Contact <a href=\"https://t.me/Zanspo1\">@Zanspo1</a> for the current payment instructions. "
         "After paying, send your proof of payment or transaction ID directly to @Zanspo1 for review.\n\n"
-        "Only after @Zanspo1 verifies and approves your payment will the VIP invite link be sent to you privately. "
-        "The link is not available before approval.\n\n"
+        "The private VIP invite is not shown here. @Zanspo1 will send it to you only after verifying and approving "
+        "your payment. No access is provided before approval.\n\n"
         "Please wait for confirmation before expecting access. Contact the admin if you need help.",
         reply_markup=keyboard,
         link_preview_options=LinkPreviewOptions(is_disabled=True),
@@ -427,6 +429,7 @@ async def show_support(message: Message) -> None:
         "📢 <b>ADVERTISING & SUPPORT</b>\n"
         "━━━━━━━━━━━━━━━━━━━━━━\n\n"
         f"For advertising and promotions, contact {ADS_CONTACT}.\n\n"
+        f"For company collaborations, contact {COLLAB_CONTACT}.\n\n"
         f"For account or VIP payment support, contact {AGENT_CONTACT}.",
         reply_markup=main_menu(),
     )
