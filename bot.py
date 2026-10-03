@@ -63,6 +63,7 @@ RATE_LIMIT_MAX_USERS = 50_000
 
 DATABASE_PATH = Path(os.getenv("BOT_DATABASE", "bot_data.sqlite3"))
 CHANNEL_USERNAME = "@zansportnews"
+PUBLIC_CHANNEL_URL = "https://t.me/zansportnews"
 try:
     configured_message_id = int(os.getenv("CHANNEL_CODE_MESSAGE_ID", "0"))
     CHANNEL_CODE_MESSAGE_ID = configured_message_id if configured_message_id > 0 else None
@@ -75,7 +76,6 @@ ADS_CONTACT = "@zan_fvrr"
 AGENT_CONTACT = "@Zanspo1"
 CHANNELS = (
     {"username": "@zansportnews", "link": "https://t.me/zansportnews", "title": "Zan Sport News"},
-    {"username": "@mrt_tips", "link": "https://t.me/mrt_tips", "title": "MRT Tips"},
 )
 MENU_CODES = "🎯 Today's Free Codes"
 MENU_PROMO = "💎 1XBet Promo"
@@ -272,7 +272,7 @@ async def start(message: Message) -> None:
 async def show_free_codes(message: Message, bot: Bot) -> None:
     keyboard = InlineKeyboardMarkup(
         inline_keyboard=[
-            [InlineKeyboardButton(text="🔥 View Latest Codes 🚀", url="https://t.me/zansportnews")]
+            [InlineKeyboardButton(text="🔥 View Latest Codes 🚀", url=PUBLIC_CHANNEL_URL)]
         ]
     )
     if CHANNEL_CODE_MESSAGE_ID:
@@ -344,8 +344,7 @@ async def show_predictions_and_ads(message: Message) -> None:
         "⚽ <b>𝑭𝑹𝑬𝑬 𝑷𝑹𝑬𝑫𝑰𝑪𝑻𝑰𝑶𝑵𝑺 & 𝑨𝑫𝑺</b> ⚽\n"
         "━━━━━━━━━━━━━━━━━━━━━━━\n\n"
         "Follow our channels for daily predictions:\n"
-        "• <a href=\"https://t.me/zansportnews\">Zan Sport News</a>\n"
-        "• <a href=\"https://t.me/mrt_tips\">MRT Tips</a>\n\n"
+        f"• <a href=\"{PUBLIC_CHANNEL_URL}\">Zan Sport News</a>\n\n"
         f"📢 <b>FOR ADS 👉</b> {ADS_CONTACT}",
         link_preview_options=LinkPreviewOptions(is_disabled=True),
     )
@@ -376,9 +375,9 @@ async def show_vip_channel(message: Message) -> None:
         "Get premium sports predictions and exclusive updates in our VIP channel.\n\n"
         "Contact <a href=\"https://t.me/Zanspo1\">@Zanspo1</a> for the current payment instructions. "
         "After paying, send your proof of payment or transaction ID directly to @Zanspo1 for review.\n\n"
-        "Once @Zanspo1 approves your payment, you will receive access to join "
-        "<a href=\"https://t.me/mrt_tips\">the VIP channel</a>.\n\n"
-        "Please wait for approval before expecting access. Contact the admin if you need help.",
+        "Only after @Zanspo1 verifies and approves your payment will the VIP invite link be sent to you privately. "
+        "The link is not available before approval.\n\n"
+        "Please wait for confirmation before expecting access. Contact the admin if you need help.",
         reply_markup=keyboard,
         link_preview_options=LinkPreviewOptions(is_disabled=True),
     )
@@ -469,8 +468,7 @@ async def enhance_channel_post(message: Message, bot: Bot) -> None:
     if not original or PROMO_MARKER.strip() in original:
         return
     promo = (
-        f'{PROMO_MARKER}\n<a href="{CHANNELS[0]["link"]}">Zan Sport News</a> · '
-        f'<a href="{CHANNELS[1]["link"]}">MRT Tips</a>'
+        f'{PROMO_MARKER}\n<a href="{PUBLIC_CHANNEL_URL}">Zan Sport News</a>'
     )
     limit = 4000 if message.text is not None else 900
     body = original[:max(0, limit - len(promo))]
